@@ -9,8 +9,17 @@ import logging
 from datetime import datetime, timedelta
 from threading import Thread
 import asyncio
+import socket
+import ssl
 
-import certifi
+# Fix for SSL/TLS on Render
+try:
+    import certifi
+    os.environ['SSL_CERT_FILE'] = certifi.where()
+    os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+except:
+    pass
+
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file, Response
 from flask_cors import CORS
 import aiohttp
@@ -33,33 +42,56 @@ if sys.platform == 'win32':
 
 
 # ============ CONFIGURATION ============
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://thoeurnpanha14_db_user:fm6GiQezayQymE4S@cluster0.viudyuo.mongodb.net/?retryWrites=true&w=majority")
+# NEW MongoDB URI with your credentials
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://dace1111zin_db_user:Si18hD9ebhlcFzEY@cluster0.kxpnzpk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# MongoDB Connection — try multiple SSL strategies for Python 3.14 compatibility
+# MongoDB Connection — fixed for Python 3.14+ and Render
 def _try_mongo_connect(uri):
     """Try different TLS/SSL connection strategies; return (client, True) or (None, False)"""
     strategies = [
-        # Strategy 1: certifi CA bundle — correct fix for Python 3.14 + MongoDB Atlas
-        dict(serverSelectionTimeoutMS=8000, tls=True, tlsCAFile=certifi.where()),
-        # Strategy 2: plain SRV, no extra TLS flags
-        dict(serverSelectionTimeoutMS=8000),
-        # Strategy 3: explicit TLS, skip cert validation
-        dict(serverSelectionTimeoutMS=8000, tls=True, tlsAllowInvalidCertificates=True),
-        # Strategy 4: TLS + skip hostname too
-        dict(serverSelectionTimeoutMS=8000, tls=True,
-             tlsAllowInvalidCertificates=True, tlsAllowInvalidHostnames=True),
+        # Strategy 1: With tlsAllowInvalidCertificates (works on Render)
+        dict(
+            serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000,
+            socketTimeoutMS=30000,
+            tls=True,
+            tlsAllowInvalidCertificates=True,
+            tlsAllowInvalidHostnames=True,
+            retryWrites=True,
+            w='majority'
+        ),
+        # Strategy 2: certifi CA bundle
+        dict(
+            serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000,
+            socketTimeoutMS=30000,
+            tls=True,
+            tlsCAFile=certifi.where()
+        ),
+        # Strategy 3: No SSL (last resort)
+        dict(
+            serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000,
+            socketTimeoutMS=30000,
+            tls=False
+        ),
     ]
+    
     for i, kwargs in enumerate(strategies, 1):
         try:
+            print(f"   🔄 Trying MongoDB strategy {i}...")
             c = MongoClient(uri, **kwargs)
+            # Test connection
             c.admin.command('ping')
             print(f"✅ MongoDB connected via strategy {i}")
             return c, True
         except Exception as e:
-            print(f"   Strategy {i} failed: {type(e).__name__}: {e}")
+            print(f"   ❌ Strategy {i} failed: {type(e).__name__}: {str(e)[:200]}")
+            continue
+    
     return None, False
 
 try:
@@ -76,6 +108,7 @@ try:
 except Exception as e_mongo:
     mongo_connected = False
     print(f"⚠️ MongoDB Connection warning: {e_mongo}")
+    print("⚠️ Continuing with local storage fallback...")
     db = None
     config_col = None
     logs_col = None
@@ -109,7 +142,7 @@ def get_default_config():
         "embed_color": "#3498db",
         "auto_role_id": "",
         "auto_nickname": "",
-        "language": "km", # 'km' or 'en'
+        "language": "km",
         "background_images": [
             {
                 "id": "def_1",
@@ -130,7 +163,6 @@ def get_default_config():
         "use_random": True,
         "no_repeat_mode": True,
         "last_used_bg": "",
-        # Welcome Card Styles
         "card_font_size": 32,
         "card_font_color": "#FFFFFF",
         "card_avatar_size": 180,
@@ -174,7 +206,6 @@ def load_config():
         try:
             config = config_col.find_one({"_id": "main_config"})
             if config:
-                # Merge missing keys from default_config
                 defaults = get_default_config()
                 for k, v in defaults.items():
                     if k not in config:
@@ -208,7 +239,7 @@ def log_activity(action_type, title, details="", user="System"):
     log_entry = {
         "id": str(uuid.uuid4())[:8],
         "timestamp": datetime.now().strftime("%d %b %Y %H:%M:%S"),
-        "type": action_type, # 'join', 'leave', 'welcome', 'settings', 'upload', 'delete', 'error'
+        "type": action_type,
         "title": title,
         "details": details,
         "user": user
@@ -340,7 +371,6 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     bg_image = await fetch_image_cached(chosen_bg_url)
     if not bg_image:
         bg_image = Image.new("RGBA", (900, 500), (30, 20, 50, 255))
-        # Draw abstract fallback background gradient
         draw_fallback = ImageDraw.Draw(bg_image)
         for y in range(500):
             r = int(20 + (y / 500) * 40)
@@ -359,7 +389,7 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     # Dark Gradient Overlay
     overlay = Image.new("RGBA", (900, 500), (0, 0, 0, 0))
     draw_overlay = ImageDraw.Draw(overlay)
-    draw_overlay.rectangle([(0, 0), (900, 500)], fill=(10, 10, 25, 90)) # subtle dark overlay
+    draw_overlay.rectangle([(0, 0), (900, 500)], fill=(10, 10, 25, 90))
     bg_image = Image.alpha_composite(bg_image, overlay)
 
     # Fetch/Load Avatar with Cache
@@ -368,7 +398,6 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
         avatar_img = Image.new("RGBA", (200, 200), (100, 100, 250, 255))
         d_av = ImageDraw.Draw(avatar_img)
         d_av.ellipse((10, 10, 190, 190), fill=(255, 59, 154, 255))
-
 
     # Process Circular Avatar with Glow & Border
     avatar_size = safe_int(config.get("card_avatar_size"), 180)
@@ -393,7 +422,6 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
         glow_color = config.get("card_avatar_glow_color", "#FF3B9A")
         glow_canvas = Image.new("RGBA", (900, 500), (0, 0, 0, 0))
         d_glow = ImageDraw.Draw(glow_canvas)
-        # Parse hex color
         try:
             glow_hex = glow_color.lstrip('#')
             r, g, b = tuple(int(glow_hex[i:i+2], 16) for i in (0, 2, 4))
@@ -423,7 +451,7 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
         d_ring.ellipse((av_x - border_w, av_y - border_w, av_x + avatar_size + border_w, av_y + avatar_size + border_w), outline=(br, bg, bb, 255), width=border_w)
         card_canvas = Image.alpha_composite(card_canvas, ring_canvas)
 
-    # Draw Text (Welcome Text & Username & Count)
+    # Draw Text
     draw_text = ImageDraw.Draw(card_canvas)
     
     pos_x = safe_int(config.get("card_text_pos_x"), 450)
@@ -436,7 +464,6 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     font_main = ImageFont.load_default()
     font_sub = ImageFont.load_default()
     try:
-        # Try loading system font or default PIL truetype
         font_path = "arial.ttf"
         if os.name == 'nt':
             font_path = "C:\\Windows\\Fonts\\arial.ttf"
@@ -563,7 +590,6 @@ def api_config():
     if request.method == 'POST':
         data = request.json or {}
         existing = load_config()
-        # Merge values
         for k, v in data.items():
             existing[k] = v
         save_config(existing)
@@ -690,15 +716,14 @@ def api_set_default_background():
 def api_preview():
     config = load_config()
     if request.method == 'POST':
-        # Accept transient overrides from frontend
         override = request.json or {}
         for k, v in override.items():
             config[k] = v
 
-    # Transient overrides from GET query params for real-time live sliders
+    # Transient overrides from GET query params
     int_keys = ['card_font_size', 'card_avatar_size', 'card_avatar_pos_x', 'card_avatar_pos_y', 'card_avatar_border_width', 'card_avatar_glow_size', 'card_text_pos_x', 'card_text_pos_y']
-
     str_keys = ['card_font_color', 'card_avatar_border_color', 'card_avatar_glow_color']
+    
     for key in int_keys:
         val = request.args.get(key)
         if val is not None:
@@ -710,7 +735,6 @@ def api_preview():
             config[key] = str(val).strip()
 
     sample_name = request.args.get("name", "DiscordUser#1234")
-
     sample_avatar = request.args.get("avatar", "https://cdn.discordapp.com/embed/avatars/0.png")
     sample_server = request.args.get("server", "Awesome Discord Community")
     sample_count = request.args.get("count", "1,248")
@@ -767,7 +791,7 @@ def api_members():
 @app.route('/api/member/action', methods=['POST'])
 def api_member_action():
     data = request.json or {}
-    action = data.get("action") # 'kick', 'ban', 'timeout', 'add_role', 'remove_role', 'send_dm'
+    action = data.get("action")
     user_id = data.get("user_id")
     config = load_config()
     server_id = config.get("server_id", "").strip()
@@ -934,7 +958,6 @@ async def on_member_join(member):
                         member.name, avatar_url, member.guild.name, member.guild.member_count, config_override=config
                     )
                     
-                    # Format text variables
                     raw_text = config.get("welcome_text", "Welcome {mention} to {server}!")
                     msg_content = raw_text.replace("{mention}", member.mention)\
                                           .replace("{username}", member.name)\
@@ -1016,12 +1039,11 @@ def run_bot_thread():
 
 if __name__ == '__main__':
     # Start Discord bot in a DAEMON background thread
-    # so it cannot kill the process if the token is wrong/missing
     bot_thread = Thread(target=run_bot_thread, daemon=True)
     bot_thread.start()
     print(f"🌐 Web Dashboard running on http://0.0.0.0:{PORT}")
 
-    # Run Flask in the MAIN thread — keeps the Render process alive
+    # Run Flask in the MAIN thread
     import logging as _logging
     _wz_log = _logging.getLogger('werkzeug')
     _wz_log.setLevel(_logging.ERROR)
