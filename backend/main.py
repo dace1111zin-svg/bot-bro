@@ -9,7 +9,8 @@ import logging
 from datetime import datetime, timedelta
 from threading import Thread
 import asyncio
-
+from supabase import create_client, Client
+# postgrest-py នឹងត្រូវបាន import ដោយស្វ័យប្រវត្តិតាមរយៈ supabase
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file, Response
 from flask_cors import CORS
 import aiohttp
