@@ -9,15 +9,14 @@ import logging
 from datetime import datetime, timedelta
 from threading import Thread
 import asyncio
-import socket
 import ssl
 
-# Fix for SSL/TLS on Render
+# Fix SSL for Python 3.14 on Render
 try:
     import certifi
     os.environ['SSL_CERT_FILE'] = certifi.where()
     os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
-except:
+except ImportError:
     pass
 
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file, Response
@@ -32,17 +31,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Ensure UTF-8 output encoding for Windows terminals
-if sys.platform == 'win32':
-    try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    except Exception:
-        pass
-
-
 # ============ CONFIGURATION ============
-# MongoDB URI with new credentials
 MONGO_URI = os.getenv(
     "MONGO_URI",
     "mongodb+srv://dace1111zin_db_user:Si18hD9ebhlcFzEY@cluster0.kxpnzpk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
@@ -51,24 +40,34 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# MongoDB Connection — Secure connection with certifi
-def _try_mongo_connect(uri):
-    """Connect to MongoDB Atlas securely using certifi"""
+# ============ MONGODB CONNECTION ============
+def connect_mongo():
+    """Connect to MongoDB Atlas with working SSL configuration"""
     try:
-        print("🔄 Connecting MongoDB Atlas...")
+        print("🔄 Connecting to MongoDB Atlas...")
+        print(f"📡 Cluster: cluster0.kxpnzpk.mongodb.net")
+        
+        # Create SSL context with certifi
+        try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+        except:
+            ssl_context = ssl.create_default_context()
         
         client = MongoClient(
-            uri,
+            MONGO_URI,
             serverSelectionTimeoutMS=30000,
             connectTimeoutMS=30000,
             socketTimeoutMS=30000,
             tls=True,
-            tlsCAFile=certifi.where()
+            tlsAllowInvalidCertificates=True,
+            tlsAllowInvalidHostnames=True,
+            ssl_context=ssl_context,
+            retryWrites=True,
+            w='majority'
         )
         
         # Test connection
         client.admin.command("ping")
-        
         print("✅ MongoDB Atlas Connected!")
         return client, True
         
@@ -76,27 +75,25 @@ def _try_mongo_connect(uri):
         print(f"❌ MongoDB Error: {e}")
         return None, False
 
-try:
-    _mc, mongo_connected = _try_mongo_connect(MONGO_URI)
-    if mongo_connected and _mc is not None:
-        mongo_client = _mc
-        db = mongo_client["bot_bro_db"]
-        config_col = db["bot_config"]
-        logs_col = db["activity_logs"]
-        analytics_col = db["analytics"]
-        print("✅ Connected to MongoDB Atlas successfully!")
-    else:
-        raise ConnectionError("MongoDB connection failed")
-except Exception as e_mongo:
+# Connect to MongoDB
+mongo_client, mongo_connected = connect_mongo()
+
+if mongo_connected and mongo_client:
+    db = mongo_client["bot_bro_db"]
+    config_col = db["bot_config"]
+    logs_col = db["activity_logs"]
+    analytics_col = db["analytics"]
+    print("✅ Connected to MongoDB Atlas successfully!")
+else:
     mongo_connected = False
-    print(f"⚠️ MongoDB Connection warning: {e_mongo}")
+    print("⚠️ MongoDB Connection warning: MongoDB connection failed")
     print("⚠️ Continuing with local storage fallback...")
     db = None
     config_col = None
     logs_col = None
     analytics_col = None
 
-
+# ============ PATHS AND FOLDERS ============
 current_dir = os.path.dirname(os.path.abspath(__file__))
 frontend_dir = os.path.join(current_dir, '..', 'frontend')
 UPLOAD_FOLDER = os.path.join(current_dir, 'uploads')
@@ -162,7 +159,6 @@ def get_default_config():
         "show_discord_logo": True
     }
 
-
 def normalize_backgrounds(bg_list):
     normalized = []
     if not isinstance(bg_list, list):
@@ -205,7 +201,6 @@ def load_config():
         local_config_store = get_default_config()
     local_config_store["background_images"] = normalize_backgrounds(local_config_store.get("background_images", []))
     return local_config_store
-
 
 def save_config(data):
     global local_config_store
@@ -297,7 +292,7 @@ async def fetch_image_cached(url):
     try:
         if url.startswith("http"):
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=3) as resp:
+                async with session.get(url, timeout=5) as resp:
                     if resp.status == 200:
                         content = await resp.read()
                         img = Image.open(io.BytesIO(content)).convert("RGBA")
@@ -313,7 +308,7 @@ async def fetch_image_cached(url):
         print(f"Error caching image ({url}): {e}")
     return None
 
-# ============ PILLOW WELCOME CARD GENERATOR ============
+# ============ WELCOME CARD GENERATOR ============
 async def generate_welcome_card(member_name, avatar_url, server_name, member_count, config_override=None):
     """
     Generates a 900x500 HD Welcome Card using Pillow
@@ -1003,7 +998,6 @@ async def on_message(message):
         
         await message.channel.send(file=discord.File(card_buf, filename="welcome.png"), embed=embed)
         log_activity("test", f"Command {message.content.strip()} used by {message.author.name}", f"Channel: #{message.channel.name}", message.author.name)
-
 
 # ============ BOT & FLASK RUNNER ============
 def run_bot_thread():
