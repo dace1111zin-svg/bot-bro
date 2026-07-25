@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from threading import Thread
 import asyncio
 
+import certifi
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file, Response
 from flask_cors import CORS
 import aiohttp
@@ -41,21 +42,24 @@ PORT = int(os.getenv("PORT", 8080))
 def _try_mongo_connect(uri):
     """Try different TLS/SSL connection strategies; return (client, True) or (None, False)"""
     strategies = [
-        # Strategy 1: plain SRV, no extra TLS flags (most compatible)
-        dict(serverSelectionTimeoutMS=5000),
-        # Strategy 2: explicit TLS, skip cert validation
-        dict(serverSelectionTimeoutMS=5000, tls=True, tlsAllowInvalidCertificates=True),
-        # Strategy 3: TLS + skip hostname too (fixes TLSV1_ALERT_INTERNAL_ERROR)
-        dict(serverSelectionTimeoutMS=5000, tls=True,
+        # Strategy 1: certifi CA bundle — correct fix for Python 3.14 + MongoDB Atlas
+        dict(serverSelectionTimeoutMS=8000, tls=True, tlsCAFile=certifi.where()),
+        # Strategy 2: plain SRV, no extra TLS flags
+        dict(serverSelectionTimeoutMS=8000),
+        # Strategy 3: explicit TLS, skip cert validation
+        dict(serverSelectionTimeoutMS=8000, tls=True, tlsAllowInvalidCertificates=True),
+        # Strategy 4: TLS + skip hostname too
+        dict(serverSelectionTimeoutMS=8000, tls=True,
              tlsAllowInvalidCertificates=True, tlsAllowInvalidHostnames=True),
     ]
-    for kwargs in strategies:
+    for i, kwargs in enumerate(strategies, 1):
         try:
             c = MongoClient(uri, **kwargs)
             c.admin.command('ping')
+            print(f"✅ MongoDB connected via strategy {i}")
             return c, True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"   Strategy {i} failed: {type(e).__name__}: {e}")
     return None, False
 
 try:
