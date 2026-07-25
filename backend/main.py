@@ -9,14 +9,15 @@ import logging
 from datetime import datetime, timedelta
 from threading import Thread
 import asyncio
+import socket
 import ssl
 
-# Fix SSL for Python 3.14 on Render
+# Fix for SSL/TLS on Render
 try:
     import certifi
     os.environ['SSL_CERT_FILE'] = certifi.where()
     os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
-except ImportError:
+except:
     pass
 
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file, Response
@@ -31,13 +32,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Ensure UTF-8 output encoding for Windows terminals
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # ============ CONFIGURATION ============
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://dace1111zin_db_user:Si18hD9ebhlcFzEY@cluster0.kxpnzpk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# Print environment variables status (for debugging)
+# Print environment variables status
 print("=" * 60)
 print("ENVIRONMENT VARIABLES STATUS:")
 print(f"MONGO_URI: {'✅ SET' if MONGO_URI else '❌ NOT SET'}")
@@ -45,87 +54,72 @@ print(f"DISCORD_TOKEN: {'✅ SET' if DISCORD_TOKEN else '❌ NOT SET'}")
 print(f"PORT: {PORT}")
 print("=" * 60)
 
-# ============ MONGODB CONNECTION ============
-def connect_mongo():
-    """Connect to MongoDB Atlas with working SSL configuration"""
-    try:
-        print("🔄 Connecting to MongoDB Atlas...")
-        print(f"📡 Cluster: cluster0.kxpnzpk.mongodb.net")
-        
-        # Create SSL context with TLS 1.2
-        try:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            # Force TLS 1.2
-            ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-            ssl_context.maximum_version = ssl.TLSVersion.TLSv1_2
-            # Disable hostname checking for Render
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-        except Exception as e:
-            print(f"   SSL context creation warning: {e}")
-            ssl_context = None
-        
-        # Try with SSL context
-        if ssl_context:
-            try:
-                client = MongoClient(
-                    MONGO_URI,
-                    serverSelectionTimeoutMS=30000,
-                    connectTimeoutMS=30000,
-                    socketTimeoutMS=30000,
-                    tls=True,
-                    tlsAllowInvalidCertificates=True,
-                    tlsAllowInvalidHostnames=True,
-                    ssl_context=ssl_context,
-                    retryWrites=True,
-                    w='majority'
-                )
-                client.admin.command("ping")
-                print("✅ MongoDB Atlas Connected! (with TLS 1.2)")
-                return client, True
-            except Exception as e:
-                print(f"   Connection with SSL context failed: {e}")
-        
-        # Fallback: without SSL context
-        print("   Trying without SSL context...")
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
-            socketTimeoutMS=30000,
+# MongoDB Connection — fixed for Python 3.14+ and Render
+def _try_mongo_connect(uri):
+    """Try different TLS/SSL connection strategies; return (client, True) or (None, False)"""
+    strategies = [
+        # Strategy 1: With tlsAllowInvalidCertificates (works on Render)
+        dict(
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
             tls=True,
             tlsAllowInvalidCertificates=True,
             tlsAllowInvalidHostnames=True,
             retryWrites=True,
             w='majority'
-        )
-        client.admin.command("ping")
-        print("✅ MongoDB Atlas Connected! (fallback)")
-        return client, True
-        
-    except Exception as e:
-        print(f"❌ MongoDB Error: {e}")
-        return None, False
+        ),
+        # Strategy 2: certifi CA bundle
+        dict(
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            tls=True,
+            tlsCAFile=certifi.where() if 'certifi' in sys.modules else None
+        ),
+        # Strategy 3: No SSL (last resort)
+        dict(
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            tls=False
+        ),
+    ]
+    
+    for i, kwargs in enumerate(strategies, 1):
+        try:
+            print(f"   🔄 Trying MongoDB strategy {i}...")
+            c = MongoClient(uri, **kwargs)
+            # Test connection
+            c.admin.command('ping')
+            print(f"✅ MongoDB connected via strategy {i}")
+            return c, True
+        except Exception as e:
+            print(f"   ❌ Strategy {i} failed: {type(e).__name__}: {str(e)[:200]}")
+            continue
+    
+    return None, False
 
-# Connect to MongoDB
-mongo_client, mongo_connected = connect_mongo()
-
-if mongo_connected and mongo_client:
-    db = mongo_client["bot_bro_db"]
-    config_col = db["bot_config"]
-    logs_col = db["activity_logs"]
-    analytics_col = db["analytics"]
-    print("✅ Connected to MongoDB Atlas successfully!")
-else:
+try:
+    _mc, mongo_connected = _try_mongo_connect(MONGO_URI)
+    if mongo_connected and _mc is not None:
+        mongo_client = _mc
+        db = mongo_client["bot_bro_db"]
+        config_col = db["bot_config"]
+        logs_col = db["activity_logs"]
+        analytics_col = db["analytics"]
+        print("✅ Connected to MongoDB Atlas successfully!")
+    else:
+        raise ConnectionError("All MongoDB connection strategies failed")
+except Exception as e_mongo:
     mongo_connected = False
-    print("⚠️ MongoDB Connection warning: MongoDB connection failed")
+    print(f"⚠️ MongoDB Connection warning: {e_mongo}")
     print("⚠️ Continuing with local storage fallback...")
     db = None
     config_col = None
     logs_col = None
     analytics_col = None
 
-# ============ PATHS AND FOLDERS ============
 current_dir = os.path.dirname(os.path.abspath(__file__))
 frontend_dir = os.path.join(current_dir, '..', 'frontend')
 UPLOAD_FOLDER = os.path.join(current_dir, 'uploads')
@@ -133,7 +127,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 BOT_START_TIME = datetime.now()
 
-# In-memory config fallback if MongoDB offline
+# In-memory config fallback if Mongo offline
 local_config_store = {}
 local_logs_store = []
 local_analytics_store = {"welcome_cards_sent": 0, "joins_today": 0, "leaves_today": 0}
@@ -324,7 +318,7 @@ async def fetch_image_cached(url):
     try:
         if url.startswith("http"):
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status == 200:
                         content = await resp.read()
                         img = Image.open(io.BytesIO(content)).convert("RGBA")
@@ -340,7 +334,7 @@ async def fetch_image_cached(url):
         print(f"Error caching image ({url}): {e}")
     return None
 
-# ============ WELCOME CARD GENERATOR ============
+# ============ PILLOW WELCOME CARD GENERATOR ============
 async def generate_welcome_card(member_name, avatar_url, server_name, member_count, config_override=None):
     """
     Generates a 900x500 HD Welcome Card using Pillow
@@ -348,9 +342,6 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     config = config_override or load_config()
     
     bg_list = config.get("background_images", [])
-    if isinstance(bg_list, str):
-        bg_list = json.loads(bg_list)
-    
     selected_id = config.get("selected_welcome_image", "")
     use_random = config.get("use_random", True)
     no_repeat = config.get("no_repeat_mode", True)
@@ -470,6 +461,8 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     pos_y = safe_int(config.get("card_text_pos_y"), 320)
     font_size = safe_int(config.get("card_font_size"), 32)
 
+    font_color_hex = config.get("card_font_color", "#FFFFFF")
+
     # Font handling
     font_main = ImageFont.load_default()
     font_sub = ImageFont.load_default()
@@ -496,7 +489,7 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
 
     # Save to BytesIO
     buf = io.BytesIO()
-    card_canvas.save(buf, format="PNG", quality=95)
+    card_canvas.save(buf, format="PNG")
     buf.seek(0)
     return buf
 
@@ -607,19 +600,15 @@ def api_config():
         return jsonify({"message": "Settings updated successfully!", "config": existing})
     
     config = load_config()
-    if '_id' in config:
-        config.pop('_id', None)
+    config.pop("_id", None)
     return jsonify(config)
 
 # --- BACKGROUND GALLERY API ---
 @app.route('/api/backgrounds', methods=['GET'])
 def api_backgrounds():
     config = load_config()
-    bg_list = config.get("background_images", [])
-    if isinstance(bg_list, str):
-        bg_list = json.loads(bg_list)
     return jsonify({
-        "backgrounds": bg_list,
+        "backgrounds": config.get("background_images", []),
         "selected_id": config.get("selected_welcome_image", ""),
         "use_random": config.get("use_random", True),
         "no_repeat_mode": config.get("no_repeat_mode", True)
@@ -634,8 +623,6 @@ def api_upload():
     uploaded_items = []
     config = load_config()
     bg_list = config.get("background_images", [])
-    if isinstance(bg_list, str):
-        bg_list = json.loads(bg_list)
 
     allowed_exts = ('.png', '.jpg', '.jpeg', '.webp')
     for file in files:
@@ -671,8 +658,6 @@ def api_upload():
 def api_delete_background(bg_id):
     config = load_config()
     bg_list = config.get("background_images", [])
-    if isinstance(bg_list, str):
-        bg_list = json.loads(bg_list)
     
     target = next((bg for bg in bg_list if bg.get("id") == bg_id), None)
     if not target:
@@ -708,8 +693,6 @@ def api_rename_background():
     
     config = load_config()
     bg_list = config.get("background_images", [])
-    if isinstance(bg_list, str):
-        bg_list = json.loads(bg_list)
     for bg in bg_list:
         if bg.get("id") == bg_id:
             bg["name"] = new_name
@@ -724,8 +707,6 @@ def api_set_default_background():
     bg_id = data.get("id")
     config = load_config()
     bg_list = config.get("background_images", [])
-    if isinstance(bg_list, str):
-        bg_list = json.loads(bg_list)
     for bg in bg_list:
         bg["is_default"] = (bg.get("id") == bg_id)
     config["background_images"] = bg_list
@@ -910,8 +891,7 @@ def api_analytics():
 @app.route('/api/backup')
 def api_backup():
     config = load_config()
-    if '_id' in config:
-        config.pop('_id', None)
+    config.pop("_id", None)
     stats = get_analytics()
     backup_data = {
         "export_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -939,6 +919,57 @@ def api_restore():
         return jsonify({"error": "Invalid backup file structure"}), 400
     except Exception as e:
         return jsonify({"error": f"Failed to parse backup file: {e}"}), 400
+
+@app.route('/api/connect_bot', methods=['POST'])
+def api_connect_bot():
+    """Accept a Discord token from the dashboard UI and start the bot."""
+    data = request.json or {}
+    token = data.get('token', '').strip()
+    if not token:
+        return jsonify({"error": "Token is required"}), 400
+
+    # Persist token to config
+    config = load_config()
+    config['bot_token'] = token
+    save_config(config)
+
+    # Also write to .env so it survives restarts
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    try:
+        lines = []
+        found = False
+        if os.path.exists(env_path):
+            with open(env_path, 'r') as f:
+                for line in f:
+                    if line.startswith('DISCORD_TOKEN='):
+                        lines.append(f'DISCORD_TOKEN={token}\n')
+                        found = True
+                    else:
+                        lines.append(line)
+        if not found:
+            lines.append(f'DISCORD_TOKEN={token}\n')
+        with open(env_path, 'w') as f:
+            f.writelines(lines)
+        print(f"✅ DISCORD_TOKEN written to .env")
+    except Exception as e:
+        print(f"⚠️ Could not update .env: {e}")
+
+    # Start the bot in a new thread only if not already running
+    if not client.is_ready():
+        def _run_bot():
+            try:
+                print("🚀 Starting Discord Bot from dashboard token input...")
+                client.run(token)
+            except Exception as e:
+                print(f"❌ Bot connection failed: {e}")
+
+        t = Thread(target=_run_bot, daemon=True)
+        t.start()
+        log_activity("bot", "Bot Connection Attempted via Dashboard", f"Token submitted from web UI.", "Owner")
+        return jsonify({"message": "Bot is connecting... status will update in a moment."})
+    else:
+        return jsonify({"message": "Bot is already connected!"})
+
 
 # ============ DISCORD BOT EVENTS ============
 @client.event

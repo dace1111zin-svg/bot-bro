@@ -323,6 +323,39 @@
 
       <!-- ================= 1. DASHBOARD TAB ================= -->
       <div id="tab-dashboard" class="tab-page active">
+
+        <!-- Bot Connect Card (shows when OFFLINE) -->
+        <div id="bot-connect-card" class="glass-card d-none mb-2" style="border-color:rgba(255,59,154,0.5);background:rgba(255,59,154,0.06);">
+          <h5 class="card-title-custom" style="border-color:rgba(255,59,154,0.2)">
+            <i class="fa-brands fa-discord" style="color:var(--sakura-pink)"></i>
+            Connect Your Discord Bot
+          </h5>
+          <p class="text-dim mb-3" style="font-size:0.92rem">Your bot is <strong class="text-danger">offline</strong>. Paste your Discord Bot Token below to connect it instantly.</p>
+          <div class="row g-3 align-items-end">
+            <div class="col-lg-9">
+              <label class="form-label-custom"><i class="fa-solid fa-key text-warning me-1"></i> Discord Bot Token</label>
+              <div class="position-relative">
+                <input type="password" class="form-control form-control-custom pe-5" id="dash-token-input"
+                  placeholder="Paste your Bot Token here (e.g. MTAx...)"
+                  autocomplete="off" style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;">
+                <button class="btn btn-sm position-absolute end-0 top-50 translate-middle-y me-2 text-dim"
+                  style="background:none;border:none" onclick="this.previousElementSibling.type = this.previousElementSibling.type === 'password' ? 'text' : 'password'; this.querySelector('i').className = this.previousElementSibling.type==='password'?'fa-solid fa-eye':'fa-solid fa-eye-slash'">
+                  <i class="fa-solid fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-lg-3">
+              <button class="btn btn-gradient w-100 py-2" id="connect-bot-btn" onclick="connectBot()">
+                <i class="fa-solid fa-plug me-2"></i> Connect Bot
+              </button>
+            </div>
+          </div>
+          <div class="mt-3 d-flex align-items-center gap-3 flex-wrap">
+            <small class="text-dim"><i class="fa-solid fa-shield-halved text-success me-1"></i> Token is saved to server config only.</small>
+            <a href="https://discord.com/developers/applications" target="_blank" class="text-info" style="font-size:0.82rem"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Get token from Discord Developer Portal</a>
+          </div>
+        </div>
+
         <div class="row g-4">
           <!-- Metric Orbs -->
           <div class="col-md-3 col-6">
@@ -422,7 +455,12 @@
           <h5 class="card-title-custom"><i class="fa-solid fa-gears"></i> <span data-i18n="nav_settings">Bot Settings</span></h5>
           
           <div class="mb-3">
-            <label class="form-label-custom"><span data-i18n="setting_token">Bot Token</span> <i class="fa-solid fa-lock text-warning"></i></label>
+            <label class="form-label-custom">
+              <span><span data-i18n="setting_token">Bot Token</span> <i class="fa-solid fa-lock text-warning"></i></span>
+              <a href="https://discord.com/developers/applications" target="_blank" class="text-info" style="font-size:0.8rem;font-weight:600;">
+                <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Get Token
+              </a>
+            </label>
             <input type="password" class="form-control form-control-custom" id="set_bot_token" placeholder="Paste Discord Bot Token">
           </div>
           
@@ -543,7 +581,7 @@
             <div class="glass-card">
               <h5 class="card-title-custom"><i class="fa-solid fa-eye"></i> Live Welcome Card Preview (900x500 HD)</h5>
               <div class="text-center p-2 bg-dark rounded-4 border border-secondary overflow-hidden">
-                <img id="live-card-preview" src="/api/preview" class="img-fluid rounded-3 shadow-lg" style="max-height: 440px;" alt="Card Preview">
+                <img id="live-card-preview" src="" class="img-fluid rounded-3 shadow-lg" style="max-height: 440px;" alt="Card Preview">
               </div>
               <div class="d-flex justify-content-between align-items-center mt-3">
                 <small class="text-dim"><i class="fa-solid fa-circle-dot text-success me-1"></i> Live Real-Time Card Generator</small>
@@ -651,7 +689,7 @@
             <i class="fa-solid fa-file-export fs-1 text-info mb-3"></i>
             <h4>Export Backup Data</h4>
             <p class="text-dim fs-7">Download a JSON snapshot of your current Bot Settings, Background Configurations, and Stats.</p>
-            <a id="backup-download-link" href="/api/backup" class="btn btn-gradient"><i class="fa-solid fa-download me-2"></i> Download Config Backup (JSON)</a>
+            <a id="backup-link" href="#" class="btn btn-gradient"><i class="fa-solid fa-download me-2"></i> Download Config Backup (JSON)</a>
           </div>
 
           <div class="p-4 bg-dark rounded-4 border border-secondary text-center">
@@ -797,24 +835,11 @@
 
     // --- API BASE URL FOR DEPLOYMENT (VERCEL & RENDER) ---
     const API_BASE = (function() {
-      const host = window.location.hostname;
-      // Local dev — use relative paths
-      if (host === 'localhost' || host === '127.0.0.1') return '';
-      // Vercel frontend — point to Render backend
-      if (host.includes('vercel.app') || host.includes('vercel')) {
-        return 'https://bot-bro-l2vf.onrender.com';
-      }
-      // Already on Render — use relative paths
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return '';
+      const saved = localStorage.getItem('render_backend_url');
+      if (saved) return saved.replace(/\/$/, '');
       return '';
     })();
-
-    // Fix static src/href that can't use API_BASE inline in HTML
-    if (API_BASE) {
-      const previewImg = document.getElementById('live-card-preview');
-      if (previewImg) previewImg.src = API_BASE + '/api/preview';
-      const backupLink = document.getElementById('backup-download-link');
-      if (backupLink) backupLink.href = API_BASE + '/api/backup';
-    }
 
     // --- DASHBOARD POLLING ---
     function fetchDashboardStats() {
@@ -857,7 +882,61 @@
             mongoBadge.className = "badge bg-warning text-dark";
             mongoBadge.innerText = "Disconnected / Local";
           }
+
+          // Show/hide bot connect card
+          const connectCard = document.getElementById('bot-connect-card');
+          if (data.status === 'ONLINE') {
+            connectCard.classList.add('d-none');
+          } else {
+            connectCard.classList.remove('d-none');
+          }
         });
+    }
+
+    // --- CONNECT BOT FROM DASHBOARD ---
+    function connectBot() {
+      const token = document.getElementById('dash-token-input').value.trim();
+      if (!token) {
+        alert('Please paste your Discord Bot Token first!');
+        return;
+      }
+      const btn = document.getElementById('connect-bot-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i> Connecting...';
+
+      fetch(API_BASE + '/api/connect_bot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.error) {
+          alert('❌ Error: ' + res.error);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-plug me-2"></i> Connect Bot';
+        } else {
+          btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> Waiting for bot...';
+          // Poll status every 2s for up to 20s
+          let attempts = 0;
+          const poll = setInterval(() => {
+            attempts++;
+            fetchDashboardStats();
+            if (attempts >= 10) {
+              clearInterval(poll);
+              btn.disabled = false;
+              btn.innerHTML = '<i class="fa-solid fa-plug me-2"></i> Connect Bot';
+            }
+          }, 2000);
+          // Also sync token to the Bot Settings tab input
+          document.getElementById('set_bot_token').value = token;
+        }
+      })
+      .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-plug me-2"></i> Connect Bot';
+        alert('Network error. Is the server running?');
+      });
     }
 
     function fetchServerInfo() {
@@ -925,6 +1004,10 @@
 
     loadBotSettings();
 
+    // Set static API links that depend on API_BASE
+    document.getElementById('backup-link').href = API_BASE + '/api/backup';
+    document.getElementById('live-card-preview').src = API_BASE + '/api/preview';
+
     document.getElementById('set_embed_color_picker').addEventListener('input', function() {
       document.getElementById('set_embed_color').value = this.value;
     });
@@ -983,7 +1066,7 @@
         const borderColor = encodeURIComponent(borderColorRaw);
         const glowColor = encodeURIComponent(glowColorRaw);
 
-        const url = API_BASE + `/api/preview?card_font_size=${fontSize}&card_avatar_size=${avatarSize}&card_avatar_pos_x=${avatarX}&card_avatar_pos_y=${avatarY}&card_font_color=${fontColor}&card_avatar_border_color=${borderColor}&card_avatar_border_width=${borderWidth}&card_avatar_glow_color=${glowColor}&card_avatar_glow_size=${glowSize}&card_text_pos_x=${posX}&card_text_pos_y=${posY}&t=${new Date().getTime()}`;
+        const url = `/api/preview?card_font_size=${fontSize}&card_avatar_size=${avatarSize}&card_avatar_pos_x=${avatarX}&card_avatar_pos_y=${avatarY}&card_font_color=${fontColor}&card_avatar_border_color=${borderColor}&card_avatar_border_width=${borderWidth}&card_avatar_glow_color=${glowColor}&card_avatar_glow_size=${glowSize}&card_text_pos_x=${posX}&card_text_pos_y=${posY}&t=${new Date().getTime()}`;
         const previewImg = document.getElementById('live-card-preview');
         if (previewImg) previewImg.src = url;
       }, 100);
