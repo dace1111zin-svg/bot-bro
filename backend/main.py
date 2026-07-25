@@ -42,57 +42,39 @@ if sys.platform == 'win32':
 
 
 # ============ CONFIGURATION ============
-# NEW MongoDB URI with your credentials
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://dace1111zin_db_user:Si18hD9ebhlcFzEY@cluster0.kxpnzpk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# MongoDB URI with new credentials
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    "mongodb+srv://dace1111zin_db_user:Si18hD9ebhlcFzEY@cluster0.kxpnzpk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+)
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# MongoDB Connection — fixed for Python 3.14+ and Render
+# MongoDB Connection — Secure connection with certifi
 def _try_mongo_connect(uri):
-    """Try different TLS/SSL connection strategies; return (client, True) or (None, False)"""
-    strategies = [
-        # Strategy 1: With tlsAllowInvalidCertificates (works on Render)
-        dict(
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
-            socketTimeoutMS=30000,
-            tls=True,
-            tlsAllowInvalidCertificates=True,
-            tlsAllowInvalidHostnames=True,
-            retryWrites=True,
-            w='majority'
-        ),
-        # Strategy 2: certifi CA bundle
-        dict(
+    """Connect to MongoDB Atlas securely using certifi"""
+    try:
+        print("🔄 Connecting MongoDB Atlas...")
+        
+        client = MongoClient(
+            uri,
             serverSelectionTimeoutMS=30000,
             connectTimeoutMS=30000,
             socketTimeoutMS=30000,
             tls=True,
             tlsCAFile=certifi.where()
-        ),
-        # Strategy 3: No SSL (last resort)
-        dict(
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
-            socketTimeoutMS=30000,
-            tls=False
-        ),
-    ]
-    
-    for i, kwargs in enumerate(strategies, 1):
-        try:
-            print(f"   🔄 Trying MongoDB strategy {i}...")
-            c = MongoClient(uri, **kwargs)
-            # Test connection
-            c.admin.command('ping')
-            print(f"✅ MongoDB connected via strategy {i}")
-            return c, True
-        except Exception as e:
-            print(f"   ❌ Strategy {i} failed: {type(e).__name__}: {str(e)[:200]}")
-            continue
-    
-    return None, False
+        )
+        
+        # Test connection
+        client.admin.command("ping")
+        
+        print("✅ MongoDB Atlas Connected!")
+        return client, True
+        
+    except Exception as e:
+        print(f"❌ MongoDB Error: {e}")
+        return None, False
 
 try:
     _mc, mongo_connected = _try_mongo_connect(MONGO_URI)
@@ -104,7 +86,7 @@ try:
         analytics_col = db["analytics"]
         print("✅ Connected to MongoDB Atlas successfully!")
     else:
-        raise ConnectionError("All MongoDB connection strategies failed")
+        raise ConnectionError("MongoDB connection failed")
 except Exception as e_mongo:
     mongo_connected = False
     print(f"⚠️ MongoDB Connection warning: {e_mongo}")
