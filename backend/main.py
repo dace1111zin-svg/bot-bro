@@ -37,24 +37,46 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# MongoDB Connection
+# MongoDB Connection — try multiple SSL strategies for Python 3.14 compatibility
+def _try_mongo_connect(uri):
+    """Try different TLS/SSL connection strategies; return (client, True) or (None, False)"""
+    strategies = [
+        # Strategy 1: plain SRV, no extra TLS flags (most compatible)
+        dict(serverSelectionTimeoutMS=5000),
+        # Strategy 2: explicit TLS, skip cert validation
+        dict(serverSelectionTimeoutMS=5000, tls=True, tlsAllowInvalidCertificates=True),
+        # Strategy 3: TLS + skip hostname too (fixes TLSV1_ALERT_INTERNAL_ERROR)
+        dict(serverSelectionTimeoutMS=5000, tls=True,
+             tlsAllowInvalidCertificates=True, tlsAllowInvalidHostnames=True),
+    ]
+    for kwargs in strategies:
+        try:
+            c = MongoClient(uri, **kwargs)
+            c.admin.command('ping')
+            return c, True
+        except Exception:
+            pass
+    return None, False
+
 try:
-    mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
-    mongo_client.admin.command('ping')
-    db = mongo_client["bot_bro_db"]
-    config_col = db["bot_config"]
-    logs_col = db["activity_logs"]
-    analytics_col = db["analytics"]
-    mongo_connected = True
-    print("✅ Connected to MongoDB Atlas successfully!")
-except Exception as e:
+    _mc, mongo_connected = _try_mongo_connect(MONGO_URI)
+    if mongo_connected and _mc is not None:
+        mongo_client = _mc
+        db = mongo_client["bot_bro_db"]
+        config_col = db["bot_config"]
+        logs_col = db["activity_logs"]
+        analytics_col = db["analytics"]
+        print("✅ Connected to MongoDB Atlas successfully!")
+    else:
+        raise ConnectionError("All MongoDB connection strategies failed")
+except Exception as e_mongo:
     mongo_connected = False
-    print(f"⚠️ MongoDB Connection warning: {e}")
-    # Local fallback in-memory or standard object mock
+    print(f"⚠️ MongoDB Connection warning: {e_mongo}")
     db = None
     config_col = None
     logs_col = None
     analytics_col = None
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 frontend_dir = os.path.join(current_dir, '..', 'frontend')
@@ -439,7 +461,14 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
 
 # ============ FLASK WEB DASHBOARD ============
 app = Flask(__name__, template_folder=frontend_dir)
-CORS(app)
+CORS(app, origins=[
+    "https://bot-bro-flax.vercel.app",
+    "https://bot-bro-l2vf.onrender.com",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+])
 
 @app.route('/')
 def index():
@@ -968,13 +997,8 @@ async def on_message(message):
 
 
 # ============ BOT & FLASK RUNNER ============
-def run_flask_app():
-    import logging
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
-
-def start_bot_thread():
+def run_bot_thread():
+    """Run the Discord bot in a background daemon thread."""
     config = load_config()
     token = config.get("bot_token", "").strip() or DISCORD_TOKEN
     if token:
@@ -983,11 +1007,18 @@ def start_bot_thread():
             client.run(token)
         except Exception as e:
             print(f"❌ Failed to launch Discord Bot: {e}")
+    else:
+        print("⚠️ No DISCORD_TOKEN set — bot will not start. Flask API is still running.")
 
 if __name__ == '__main__':
-    # Start Flask API in background thread
-    Thread(target=run_flask_app, daemon=True).start()
-    print(f"🌐 Web Dashboard running on http://localhost:{PORT}")
+    # Start Discord bot in a DAEMON background thread
+    # so it cannot kill the process if the token is wrong/missing
+    bot_thread = Thread(target=run_bot_thread, daemon=True)
+    bot_thread.start()
+    print(f"🌐 Web Dashboard running on http://0.0.0.0:{PORT}")
 
-    # Start Bot in main thread
-    start_bot_thread()
+    # Run Flask in the MAIN thread — keeps the Render process alive
+    import logging as _logging
+    _wz_log = _logging.getLogger('werkzeug')
+    _wz_log.setLevel(_logging.ERROR)
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)

@@ -651,7 +651,7 @@
             <i class="fa-solid fa-file-export fs-1 text-info mb-3"></i>
             <h4>Export Backup Data</h4>
             <p class="text-dim fs-7">Download a JSON snapshot of your current Bot Settings, Background Configurations, and Stats.</p>
-            <a href="/api/backup" class="btn btn-gradient"><i class="fa-solid fa-download me-2"></i> Download Config Backup (JSON)</a>
+            <a id="backup-download-link" href="/api/backup" class="btn btn-gradient"><i class="fa-solid fa-download me-2"></i> Download Config Backup (JSON)</a>
           </div>
 
           <div class="p-4 bg-dark rounded-4 border border-secondary text-center">
@@ -797,11 +797,24 @@
 
     // --- API BASE URL FOR DEPLOYMENT (VERCEL & RENDER) ---
     const API_BASE = (function() {
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return '';
-      const saved = localStorage.getItem('render_backend_url');
-      if (saved) return saved.replace(/\/$/, '');
+      const host = window.location.hostname;
+      // Local dev — use relative paths
+      if (host === 'localhost' || host === '127.0.0.1') return '';
+      // Vercel frontend — point to Render backend
+      if (host.includes('vercel.app') || host.includes('vercel')) {
+        return 'https://bot-bro-l2vf.onrender.com';
+      }
+      // Already on Render — use relative paths
       return '';
     })();
+
+    // Fix static src/href that can't use API_BASE inline in HTML
+    if (API_BASE) {
+      const previewImg = document.getElementById('live-card-preview');
+      if (previewImg) previewImg.src = API_BASE + '/api/preview';
+      const backupLink = document.getElementById('backup-download-link');
+      if (backupLink) backupLink.href = API_BASE + '/api/backup';
+    }
 
     // --- DASHBOARD POLLING ---
     function fetchDashboardStats() {
@@ -848,7 +861,7 @@
     }
 
     function fetchServerInfo() {
-      fetch('/api/server_info')
+      fetch(API_BASE + '/api/server_info')
         .then(r => r.json())
         .then(data => {
           const badge = document.getElementById('active-server-badge');
@@ -870,7 +883,7 @@
 
     // --- BOT SETTINGS ---
     function loadBotSettings() {
-      fetch('/api/config')
+      fetch(API_BASE + '/api/config')
         .then(r => r.json())
         .then(data => {
           document.getElementById('set_bot_token').value = data.bot_token || "";
@@ -925,7 +938,7 @@
         auto_role_id: document.getElementById('set_auto_role_id').value.trim(),
         welcome_text: document.getElementById('set_welcome_text').value
       };
-      fetch('/api/config', {
+      fetch(API_BASE + '/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -970,7 +983,7 @@
         const borderColor = encodeURIComponent(borderColorRaw);
         const glowColor = encodeURIComponent(glowColorRaw);
 
-        const url = `/api/preview?card_font_size=${fontSize}&card_avatar_size=${avatarSize}&card_avatar_pos_x=${avatarX}&card_avatar_pos_y=${avatarY}&card_font_color=${fontColor}&card_avatar_border_color=${borderColor}&card_avatar_border_width=${borderWidth}&card_avatar_glow_color=${glowColor}&card_avatar_glow_size=${glowSize}&card_text_pos_x=${posX}&card_text_pos_y=${posY}&t=${new Date().getTime()}`;
+        const url = API_BASE + `/api/preview?card_font_size=${fontSize}&card_avatar_size=${avatarSize}&card_avatar_pos_x=${avatarX}&card_avatar_pos_y=${avatarY}&card_font_color=${fontColor}&card_avatar_border_color=${borderColor}&card_avatar_border_width=${borderWidth}&card_avatar_glow_color=${glowColor}&card_avatar_glow_size=${glowSize}&card_text_pos_x=${posX}&card_text_pos_y=${posY}&t=${new Date().getTime()}`;
         const previewImg = document.getElementById('live-card-preview');
         if (previewImg) previewImg.src = url;
       }, 100);
@@ -991,7 +1004,7 @@
           card_text_pos_x: parseInt(posX),
           card_text_pos_y: parseInt(posY)
         };
-        fetch('/api/config', {
+        fetch(API_BASE + '/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1003,7 +1016,7 @@
 
     // --- BACKGROUND GALLERY ---
     function loadBackgroundStore() {
-      fetch('/api/backgrounds')
+      fetch(API_BASE + '/api/backgrounds')
         .then(r => r.json())
         .then(data => {
           const grid = document.getElementById('bg-gallery-grid');
@@ -1046,7 +1059,7 @@
       for (let i = 0; i < input.files.length; i++) {
         formData.append('files', input.files[i]);
       }
-      fetch('/api/upload', { method: 'POST', body: formData })
+      fetch(API_BASE + '/api/upload', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(res => {
           alert(res.message || 'Uploaded!');
@@ -1057,7 +1070,7 @@
 
     function deleteBg(bgId) {
       if (!confirm("Are you sure you want to delete this background?")) return;
-      fetch(`/api/background/${bgId}`, { method: 'DELETE' })
+      fetch(API_BASE + `/api/background/${bgId}`, { method: 'DELETE' })
         .then(r => r.json())
         .then(res => {
           loadBackgroundStore();
@@ -1065,7 +1078,7 @@
     }
 
     function setDefaultBg(bgId) {
-      fetch('/api/background/set_default', {
+      fetch(API_BASE + '/api/background/set_default', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: bgId })
@@ -1075,7 +1088,7 @@
     }
 
     function toggleRandomMode(enabled) {
-      fetch('/api/config', {
+      fetch(API_BASE + '/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ use_random: enabled })
@@ -1083,7 +1096,7 @@
     }
 
     function toggleNoRepeatMode(enabled) {
-      fetch('/api/config', {
+      fetch(API_BASE + '/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ no_repeat_mode: enabled })
@@ -1096,7 +1109,7 @@
       const tbody = document.getElementById('members-table-body');
       tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-dim"><i class="fa-solid fa-spinner fa-spin me-2"></i> Loading members...</td></tr>';
       
-      fetch(`/api/members?search=${encodeURIComponent(q)}`)
+      fetch(API_BASE + `/api/members?search=${encodeURIComponent(q)}`)
         .then(r => r.json())
         .then(data => {
           tbody.innerHTML = '';
@@ -1155,7 +1168,7 @@
         message: reason
       };
 
-      fetch('/api/member/action', {
+      fetch(API_BASE + '/api/member/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1172,7 +1185,7 @@
 
     // --- ACTIVITY LOGS ---
     function loadActivityLogs() {
-      fetch('/api/logs')
+      fetch(API_BASE + '/api/logs')
         .then(r => r.json())
         .then(logs => {
           const container = document.getElementById('logs-container');
@@ -1203,7 +1216,7 @@
     let welcomeChart = null;
 
     function initAnalyticsCharts() {
-      fetch('/api/analytics')
+      fetch(API_BASE + '/api/analytics')
         .then(r => r.json())
         .then(data => {
           const ctxGrowth = document.getElementById('chart-growth').getContext('2d');
@@ -1247,7 +1260,7 @@
       const formData = new FormData();
       formData.append('backup_file', input.files[0]);
 
-      fetch('/api/restore', { method: 'POST', body: formData })
+      fetch(API_BASE + '/api/restore', { method: 'POST', body: formData })
         .then(r => r.json())
         .then(res => {
           alert(res.message || res.error);
