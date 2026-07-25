@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="km" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discord Bot Owner Dashboard</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Google Fonts (Noto Sans Khmer & Outfit) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root {
+      --void-bg: #090814;
+      --panel-bg: rgba(22, 19, 43, 0.75);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --sakura-pink: #ff3b9a;
+      --aqua-cyan: #00e5ff;
+      --neon-gold: #ffd700;
+      --neon-green: #b3ff4a;
+      --text-main: #f0edff;
+      --text-dim: #aea4d9;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: radial-gradient(1200px 600px at 85% -10%, rgba(255, 59, 154, 0.12), transparent 60%),
+                  radial-gradient(900px 500px at -10% 20%, rgba(0, 229, 255, 0.10), transparent 60%),
+                  linear-gradient(160deg, #090814 0%, #120e29 45%, #181335 100%);
+      color: var(--text-main);
+      font-family: 'Outfit', 'Noto Sans Khmer', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 59, 154, 0.3); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--sakura-pink); }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      width: 260px;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 100;
+      background: rgba(12, 10, 26, 0.95);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid var(--panel-border);
+      padding: 24px 16px;
+      transition: transform 0.3s ease;
+    }
+    
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 20px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .brand-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: radial-gradient(circle, var(--sakura-pink), #8000ff);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; color: #fff;
+      box-shadow: 0 0 20px rgba(255, 59, 154, 0.4);
+    }
+    .brand-text h5 { margin: 0; font-weight: 700; color: #fff; font-size: 1.1rem; }
+    .brand-text small { color: var(--aqua-cyan); font-size: 0.75rem; letter-spacing: 0.5px; }
+
+    .nav-link-custom {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-dim);
+      padding: 12px 16px;
+      border-radius: 14px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: all 0.25s ease;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+    .nav-link-custom i { width: 20px; text-align: center; font-size: 1.1rem; }
+    .nav-link-custom:hover {
+      background: rgba(255, 59, 154, 0.08);
+      color: #fff;
+      border-color: rgba(255, 59, 154, 0.2);
+    }
+    .nav-link-custom.active {
+      background: linear-gradient(90deg, rgba(255, 59, 154, 0.25), rgba(0, 229, 255, 0.15));
+      color: #fff;
+      border-color: rgba(255, 59, 154, 0.4);
+      box-shadow: 0 0 20px rgba(255, 59, 154, 0.15);
+    }
+
+    /* Main Content */
+    .main-wrapper {
+      margin-left: 260px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Topbar Header */
+    .topbar {
+      position: sticky; top: 0; z-index: 90;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 28px;
+      background: rgba(9, 8, 20, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .status-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 999px;
+      font-size: 0.82rem; font-weight: 600;
+      border: 1px solid;
+    }
+    .status-badge.online {
+      background: rgba(179, 255, 74, 0.1);
+      color: var(--neon-green);
+      border-color: rgba(179, 255, 74, 0.3);
+      box-shadow: 0 0 12px rgba(179, 255, 74, 0.2);
+    }
+    .status-badge.offline {
+      background: rgba(255, 77, 109, 0.1);
+      color: #ff4d6d;
+      border-color: rgba(255, 77, 109, 0.3);
+    }
+
+    .pulse-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.3); } }
+
+    /* Glass Cards */
+    .glass-card {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      transition: border-color 0.2s;
+    }
+    .glass-card:hover { border-color: rgba(0, 229, 255, 0.25); }
+
+    .card-title-custom {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 20px;
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px dashed var(--panel-border);
+    }
+    .card-title-custom i { color: var(--aqua-cyan); }
+
+    /* Metric Orb Stats */
+    .metric-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric-card h3 { font-size: 1.8rem; margin: 6px 0 2px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .metric-card small { color: var(--text-dim); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Modern Inputs */
+    .form-label-custom {
+      font-weight: 600; font-size: 0.88rem; color: var(--text-dim); margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .form-control-custom, .form-select-custom {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      color: #fff;
+      padding: 10px 14px;
+      font-size: 0.92rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .form-control-custom:focus, .form-select-custom:focus {
+      background: rgba(0, 0, 0, 0.6);
+      border-color: var(--aqua-cyan);
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.15);
+      color: #fff;
+    }
+
+    /* Custom Buttons */
+    .btn-gradient {
+      background: linear-gradient(90deg, var(--sakura-pink), #8000ff);
+      color: #fff; border: none; font-weight: 700;
+      padding: 10px 24px; border-radius: 999px;
+      box-shadow: 0 4px 18px rgba(255, 59, 154, 0.35);
+      transition: all 0.25s;
+    }
+    .btn-gradient:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(255, 59, 154, 0.5);
+      color: #fff;
+    }
+    .btn-aqua {
+      background: linear-gradient(90deg, var(--aqua-cyan), #0088ff);
+      color: #080714; border: none; font-weight: 700;
+      padding: 10px 24px; border-radius: 999px;
+      box-shadow: 0 4px 18px rgba(0, 229, 255, 0.35);
+    }
+    .btn-aqua:hover { color: #080714; transform: translateY(-2px); }
+
+    /* Background Store Cards */
+    .bg-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 18px;
+    }
+    .bg-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+      transition: all 0.25s ease;
+    }
+    .bg-card:hover { border-color: var(--sakura-pink); transform: translateY(-3px); }
+    .bg-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+    .bg-card-body { padding: 12px; }
+    .bg-card-title { font-size: 0.85rem; font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    .bg-badge { position: absolute; top: 10px; right: 10px; font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+
+    /* Table styling */
+    .table-custom { color: var(--text-main); vertical-align: middle; }
+    .table-custom th { background: rgba(0, 0, 0, 0.3); color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; border-bottom: 1px solid var(--panel-border); }
+    .table-custom td { border-bottom: 1px solid var(--panel-border); }
+
+    /* Tab switching */
+    .tab-page { display: none; }
+    .tab-page.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Hamburger & Responsive */
+    .hamburger-btn { display: none; background: transparent; border: none; color: #fff; font-size: 1.3rem; margin-right: 14px; }
+    @media (max-width: 992px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.show { transform: translateX(0); }
+      .main-wrapper { margin-left: 0; }
+      .hamburger-btn { display: block; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar Nav -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-logo">
+      <div class="brand-icon"><i class="fa-solid fa-crown"></i></div>
+      <div class="brand-text">
+        <h5 data-i18n="app_title">BOT OWNER PANEL</h5>
+        <small data-i18n="app_subtitle">Discord Management System</small>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-link-custom active" onclick="switchTab('tab-dashboard', this)"><i class="fa-solid fa-gauge-high"></i> <span data-i18n="nav_dashboard">Dashboard</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-settings', this)"><i class="fa-solid fa-sliders"></i> <span data-i18n="nav_settings">Bot Settings</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-design', this)"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-i18n="nav_design">Welcome Design</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-store', this)"><i class="fa-solid fa-images"></i> <span data-i18n="nav_backgrounds">Background Gallery</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-members', this)"><i class="fa-solid fa-users-gear"></i> <span data-i18n="nav_members">Members Management</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-logs', this)"><i class="fa-solid fa-clock-rotate-left"></i> <span data-i18n="nav_logs">Activity Logs</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-analytics', this)"><i class="fa-solid fa-chart-line"></i> <span data-i18n="nav_analytics">Analytics</span></div>
+      <div class="nav-link-custom" onclick="switchTab('tab-backup', this)"><i class="fa-solid fa-shield-halved"></i> <span data-i18n="nav_backup">Backup & Restore</span></div>
+    </nav>
+  </aside>
+
+  <div class="main-wrapper">
+    <!-- Topbar Header -->
+    <header class="topbar">
+      <div class="d-flex align-items-center">
+        <button class="hamburger-btn" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+        <h5 class="m-0 fw-bold" id="topbar-title"><i class="fa-solid fa-gauge-high me-2 text-info"></i> Dashboard Overview</h5>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <!-- Language Switcher -->
+        <select class="form-select form-select-sm form-select-custom style-select" id="lang-switcher" onchange="changeLanguage(this.value)">
+          <option value="km">🇰🇭 ភាសាខ្មែរ</option>
+          <option value="en">🇬🇧 English</option>
+        </select>
+        <!-- Server Badge -->
+        <div id="active-server-badge" class="d-none align-items-center gap-2 px-3 py-1 bg-dark rounded-pill border border-secondary">
+          <img id="header-server-icon" src="" width="24" height="24" class="rounded-circle">
+          <span id="header-server-name" class="fw-bold fs-7"></span>
+        </div>
+        <!-- Status Pill -->
+        <div class="status-badge offline" id="bot-status-pill">
+          <span class="pulse-dot"></span> <span id="bot-status-text">Checking...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="p-4">
+
+      <!-- ================= 1. DASHBOARD TAB ================= -->
+      <div id="tab-dashboard" class="tab-page active">
+        <div class="row g-4">
+          <!-- Metric Orbs -->
+          <div class="col-md-3 col-6">
+            <div class="metric-card">
+              <small data-i18n="stat_ping">Bot Ping</small>
+              <h3 class="text-info" id="dash-ping">-- ms</h3>
+            </div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="metric-card">
+              <small data-i18n="stat_uptime">Uptime</small>
+              <h3 class="text-warning" id="dash-uptime">--</h3>
+            </div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="metric-card">
+              <small data-i18n="stat_servers">Connected Servers</small>
+              <h3 class="text-success" id="dash-servers">--</h3>
+            </div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="metric-card">
+              <small data-i18n="stat_members">Total Members</small>
+              <h3 class="text-danger" id="dash-members">--</h3>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-4 mt-1">
+          <!-- Breakdown -->
+          <div class="col-lg-7">
+            <div class="glass-card h-100">
+              <h5 class="card-title-custom"><i class="fa-solid fa-server"></i> <span data-i18n="server_details">Server Breakdown</span></h5>
+              <div class="row text-center g-3 mt-2">
+                <div class="col-4">
+                  <div class="p-3 bg-dark rounded-4 border border-secondary">
+                    <i class="fa-solid fa-user fs-4 text-info mb-2"></i>
+                    <h4 id="dash-humans">--</h4>
+                    <small class="text-dim" data-i18n="stat_humans">Humans</small>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="p-3 bg-dark rounded-4 border border-secondary">
+                    <i class="fa-solid fa-robot fs-4 text-danger mb-2"></i>
+                    <h4 id="dash-bots">--</h4>
+                    <small class="text-dim" data-i18n="stat_bots">Bots</small>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="p-3 bg-dark rounded-4 border border-secondary">
+                    <i class="fa-solid fa-hashtag fs-4 text-warning mb-2"></i>
+                    <h4 id="dash-channels">--</h4>
+                    <small class="text-dim" data-i18n="stat_channels">Channels</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System Health -->
+          <div class="col-lg-5">
+            <div class="glass-card h-100">
+              <h5 class="card-title-custom"><i class="fa-solid fa-microchip"></i> <span data-i18n="system_health">System Metrics</span></h5>
+              <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1 fw-bold fs-7">
+                  <span>CPU Usage</span>
+                  <span id="cpu-text">0%</span>
+                </div>
+                <div class="progress bg-dark" style="height: 10px;">
+                  <div class="progress-bar bg-info" id="cpu-bar" style="width: 0%"></div>
+                </div>
+              </div>
+              <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1 fw-bold fs-7">
+                  <span>RAM Usage</span>
+                  <span id="ram-text">0%</span>
+                </div>
+                <div class="progress bg-dark" style="height: 10px;">
+                  <div class="progress-bar bg-warning" id="ram-bar" style="width: 0%"></div>
+                </div>
+              </div>
+              <div class="d-flex align-items-center justify-content-between p-3 bg-dark rounded-3 border border-secondary mt-3">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="fa-solid fa-database text-success"></i>
+                  <span class="fw-bold">MongoDB Atlas</span>
+                </div>
+                <span class="badge bg-success" id="mongo-status">Connected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= 2. BOT SETTINGS TAB ================= -->
+      <div id="tab-settings" class="tab-page">
+        <div class="glass-card max-w-700 mx-auto">
+          <h5 class="card-title-custom"><i class="fa-solid fa-gears"></i> <span data-i18n="nav_settings">Bot Settings</span></h5>
+          
+          <div class="mb-3">
+            <label class="form-label-custom"><span data-i18n="setting_token">Bot Token</span> <i class="fa-solid fa-lock text-warning"></i></label>
+            <input type="password" class="form-control form-control-custom" id="set_bot_token" placeholder="Paste Discord Bot Token">
+          </div>
+          
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label-custom" data-i18n="setting_server_id">Server ID (Guild ID)</label>
+              <input type="text" class="form-control form-control-custom" id="set_server_id" placeholder="Ex: 123456789012345678">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label-custom" data-i18n="setting_channel_id">Welcome Channel ID</label>
+              <input type="text" class="form-control form-control-custom" id="set_welcome_channel_id" placeholder="Ex: 123456789012345678">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label-custom" data-i18n="setting_embed_color">Embed Accent Color</label>
+              <div class="d-flex gap-2">
+                <input type="color" class="form-control form-control-color bg-dark border-0 p-1" id="set_embed_color_picker" value="#3498db" style="width:50px; height:42px;">
+                <input type="text" class="form-control form-control-custom" id="set_embed_color" value="#3498db">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label-custom" data-i18n="setting_auto_role">Auto Role ID</label>
+              <input type="text" class="form-control form-control-custom" id="set_auto_role_id" placeholder="Role ID to assign on join">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label-custom" data-i18n="setting_welcome_text">Welcome Message Template</label>
+            <textarea class="form-control form-control-custom" id="set_welcome_text" rows="3"></textarea>
+            <small class="text-dim mt-1 d-block">Available Variables: <code>{mention}</code> <code>{username}</code> <code>{server}</code> <code>{count}</code> <code>{userid}</code></small>
+          </div>
+
+          <button class="btn btn-gradient w-100 py-2 mt-3" onclick="saveBotSettings()"><i class="fa-solid fa-floppy-disk me-2"></i> <span data-i18n="btn_save">Save Settings</span></button>
+        </div>
+      </div>
+
+      <!-- ================= 3. WELCOME DESIGN TAB ================= -->
+      <div id="tab-design" class="tab-page">
+        <div class="row g-4">
+          <!-- Controls -->
+          <div class="col-lg-5">
+            <div class="glass-card">
+              <h5 class="card-title-custom"><i class="fa-solid fa-palette"></i> Card Customizer</h5>
+              
+              <div class="mb-3">
+                <label class="form-label-custom">Font Size: <span id="val-font-size" class="text-info font-mono">32</span>px</label>
+                <input type="range" class="form-range" id="card_font_size" min="16" max="60" value="32" oninput="updateCardPreview()">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label-custom">Font Color</label>
+                <input type="color" class="form-control form-control-color bg-dark border-0 p-1 w-100" id="card_font_color" value="#ffffff" oninput="updateCardPreview()" onchange="updateCardPreview()">
+              </div>
+
+              <div class="row g-2 mb-3">
+                <div class="col-12">
+                  <label class="form-label-custom">Avatar Size: <span id="val-avatar-size" class="text-info font-mono">180</span>px</label>
+                  <input type="range" class="form-range" id="card_avatar_size" min="80" max="280" value="180" oninput="updateCardPreview()">
+                </div>
+              </div>
+
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label-custom">Avatar Position X: <span id="val-avatar-x" class="text-info font-mono">360</span>px</label>
+                  <input type="range" class="form-range" id="card_avatar_pos_x" min="50" max="750" value="360" oninput="updateCardPreview()">
+                </div>
+                <div class="col-6">
+                  <label class="form-label-custom">Avatar Position Y: <span id="val-avatar-y" class="text-info font-mono">70</span>px</label>
+                  <input type="range" class="form-range" id="card_avatar_pos_y" min="20" max="350" value="70" oninput="updateCardPreview()">
+                </div>
+              </div>
+
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label-custom">Avatar Border Color</label>
+                  <input type="color" class="form-control form-control-color bg-dark border-0 p-1 w-100" id="card_avatar_border_color" value="#00e5ff" oninput="updateCardPreview()" onchange="updateCardPreview()">
+                </div>
+                <div class="col-6">
+                  <label class="form-label-custom">Border Width: <span id="val-border-width" class="text-info font-mono">4</span>px</label>
+                  <input type="range" class="form-range" id="card_avatar_border_width" min="0" max="12" value="4" oninput="updateCardPreview()">
+                </div>
+              </div>
+
+
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label-custom">Glow Color</label>
+                  <input type="color" class="form-control form-control-color bg-dark border-0 p-1 w-100" id="card_avatar_glow_color" value="#ff3b9a" oninput="updateCardPreview()" onchange="updateCardPreview()">
+                </div>
+                <div class="col-6">
+                  <label class="form-label-custom">Glow Radius: <span id="val-glow-size" class="text-info font-mono">14</span>px</label>
+                  <input type="range" class="form-range" id="card_avatar_glow_size" min="0" max="30" value="14" oninput="updateCardPreview()">
+                </div>
+              </div>
+
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label-custom">Text X Position: <span id="val-pos-x" class="text-info font-mono">450</span>px</label>
+                  <input type="range" class="form-range" id="card_text_pos_x" min="100" max="800" value="450" oninput="updateCardPreview()">
+                </div>
+                <div class="col-6">
+                  <label class="form-label-custom">Text Y Position: <span id="val-pos-y" class="text-info font-mono">320</span>px</label>
+                  <input type="range" class="form-range" id="card_text_pos_y" min="200" max="480" value="320" oninput="updateCardPreview()">
+                </div>
+              </div>
+
+              <div class="mt-2 text-center text-dim fs-7">
+                <i class="fa-solid fa-bolt text-warning me-1"></i> Auto-saves in real-time as you tweak controls.
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Live Preview -->
+          <div class="col-lg-7">
+            <div class="glass-card">
+              <h5 class="card-title-custom"><i class="fa-solid fa-eye"></i> Live Welcome Card Preview (900x500 HD)</h5>
+              <div class="text-center p-2 bg-dark rounded-4 border border-secondary overflow-hidden">
+                <img id="live-card-preview" src="/api/preview" class="img-fluid rounded-3 shadow-lg" style="max-height: 440px;" alt="Card Preview">
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <small class="text-dim"><i class="fa-solid fa-circle-dot text-success me-1"></i> Live Real-Time Card Generator</small>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ================= 4. BACKGROUND GALLERY TAB ================= -->
+      <div id="tab-store" class="tab-page">
+        <div class="glass-card">
+          <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <h5 class="card-title-custom m-0 border-0 p-0"><i class="fa-solid fa-photo-film"></i> Background Image Gallery</h5>
+            <div class="d-flex gap-3 align-items-center">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="toggle-use-random" onchange="toggleRandomMode(this.checked)">
+                <label class="form-check-label fw-bold" for="toggle-use-random">Random Mode</label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="toggle-no-repeat" onchange="toggleNoRepeatMode(this.checked)">
+                <label class="form-check-label fw-bold" for="toggle-no-repeat">No Repeat Mode</label>
+              </div>
+              <label for="upload-bg-input" class="btn btn-aqua btn-sm mb-0">
+                <i class="fa-solid fa-cloud-arrow-up me-1"></i> Upload Images
+              </label>
+              <input type="file" id="upload-bg-input" multiple accept="image/*" class="d-none" onchange="uploadBackgrounds(this)">
+            </div>
+          </div>
+
+          <div class="bg-grid" id="bg-gallery-grid">
+            <!-- Dynamic Background Cards -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= 5. MEMBER MANAGEMENT TAB ================= -->
+      <div id="tab-members" class="tab-page">
+        <div class="glass-card">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="card-title-custom m-0 border-0 p-0"><i class="fa-solid fa-users"></i> Member Directory & Moderation</h5>
+            <div class="d-flex gap-2">
+              <input type="text" class="form-control form-control-custom form-control-sm" id="search-member-input" placeholder="Search member..." onkeyup="loadMembers()">
+              <button class="btn btn-sm btn-outline-info rounded-pill" onclick="loadMembers()"><i class="fa-solid fa-rotate"></i></button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-custom">
+              <thead>
+                <tr>
+                  <th>Profile</th>
+                  <th>Username</th>
+                  <th>User ID</th>
+                  <th>Joined Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="members-table-body">
+                <tr><td colspan="5" class="text-center text-dim py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i> Loading members...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= 6. ACTIVITY LOGS TAB ================= -->
+      <div id="tab-logs" class="tab-page">
+        <div class="glass-card">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title-custom m-0 border-0 p-0"><i class="fa-solid fa-clock-rotate-left"></i> System Activity Logs</h5>
+            <button class="btn btn-sm btn-outline-info rounded-pill" onclick="loadActivityLogs()"><i class="fa-solid fa-rotate me-1"></i> Refresh Logs</button>
+          </div>
+          <div id="logs-container" class="d-flex flex-column gap-2" style="max-height: 550px; overflow-y: auto;">
+            <!-- Logs entries -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= 7. ANALYTICS TAB ================= -->
+      <div id="tab-analytics" class="tab-page">
+        <div class="row g-4">
+          <div class="col-lg-6">
+            <div class="glass-card">
+              <h5 class="card-title-custom"><i class="fa-solid fa-chart-line"></i> Member Growth Trend</h5>
+              <canvas id="chart-growth" height="220"></canvas>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="glass-card">
+              <h5 class="card-title-custom"><i class="fa-solid fa-chart-column"></i> Welcome Cards Sent</h5>
+              <canvas id="chart-welcome" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= 8. BACKUP & RESTORE TAB ================= -->
+      <div id="tab-backup" class="tab-page">
+        <div class="glass-card max-w-700 mx-auto">
+          <h5 class="card-title-custom"><i class="fa-solid fa-shield-halved"></i> Backup & Restore Configuration</h5>
+          
+          <div class="p-4 bg-dark rounded-4 border border-secondary mb-4 text-center">
+            <i class="fa-solid fa-file-export fs-1 text-info mb-3"></i>
+            <h4>Export Backup Data</h4>
+            <p class="text-dim fs-7">Download a JSON snapshot of your current Bot Settings, Background Configurations, and Stats.</p>
+            <a href="/api/backup" class="btn btn-gradient"><i class="fa-solid fa-download me-2"></i> Download Config Backup (JSON)</a>
+          </div>
+
+          <div class="p-4 bg-dark rounded-4 border border-secondary text-center">
+            <i class="fa-solid fa-file-import fs-1 text-warning mb-3"></i>
+            <h4>Restore from Backup</h4>
+            <p class="text-dim fs-7">Select a previously exported JSON backup file to restore configuration.</p>
+            <input type="file" id="restore-file-input" accept=".json" class="d-none" onchange="restoreConfig(this)">
+            <label for="restore-file-input" class="btn btn-aqua"><i class="fa-solid fa-upload me-2"></i> Choose JSON File to Restore</label>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Member Action Modal -->
+  <div class="modal fade" id="memberActionModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark border border-secondary text-light">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title fw-bold" id="action-modal-title">Member Moderation Action</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="action-user-id">
+          <input type="hidden" id="action-type">
+
+          <div id="action-reason-group" class="mb-3">
+            <label class="form-label-custom">Reason / Details</label>
+            <input type="text" class="form-control form-control-custom" id="action-reason-input" placeholder="Enter reason...">
+          </div>
+
+          <div id="action-duration-group" class="mb-3 d-none">
+            <label class="form-label-custom">Timeout Duration</label>
+            <select class="form-select form-select-custom" id="action-duration-select">
+              <option value="5">5 Minutes</option>
+              <option value="10" selected>10 Minutes</option>
+              <option value="60">1 Hour</option>
+              <option value="1440">1 Day</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-gradient rounded-pill" onclick="executeMemberAction()">Confirm Action</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Dictionary Translations (Khmer & English)
+    const i18n = {
+      km: {
+        app_title: "BOT OWNER PANEL",
+        app_subtitle: "ប្រព័ន្ធគ្រប់គ្រង Discord Bot",
+        nav_dashboard: "ផ្ទាំងព័ត៌មាន",
+        nav_settings: "ការកំណត់ Bot",
+        nav_design: "រចនាកាតស្វាគមន៍",
+        nav_backgrounds: "បណ្ណាល័យរូបភាព",
+        nav_members: "គ្រប់គ្រងសមាជិក",
+        nav_logs: "កំណត់ហេតុសកម្មភាព",
+        nav_analytics: "ស្ថិតិវិភាគ",
+        nav_backup: "រក្សាទុក & ស្ដារ",
+        stat_ping: "Bot Ping",
+        stat_uptime: "ដំណើរការ",
+        stat_servers: "ចំនួន Server",
+        stat_members: "សមាជិកសរុប",
+        stat_humans: "មនុស្ស",
+        stat_bots: "Bot",
+        stat_channels: "Channel",
+        server_details: "ព័ត៌មានលម្អិត Server",
+        system_health: "ស្ថានភាពប្រព័ន្ធ",
+        setting_token: "Bot Token",
+        setting_server_id: "Server ID (Guild ID)",
+        setting_channel_id: "Welcome Channel ID",
+        setting_embed_color: "ពណ៌ Embed",
+        setting_auto_role: "Auto Role ID",
+        setting_welcome_text: "សារស្វាគមន៍",
+        btn_save: "រក្សាទុកការកំណត់"
+      },
+      en: {
+        app_title: "BOT OWNER PANEL",
+        app_subtitle: "Discord Management System",
+        nav_dashboard: "Dashboard",
+        nav_settings: "Bot Settings",
+        nav_design: "Welcome Design",
+        nav_backgrounds: "Background Gallery",
+        nav_members: "Members Management",
+        nav_logs: "Activity Logs",
+        nav_analytics: "Analytics",
+        nav_backup: "Backup & Restore",
+        stat_ping: "Bot Ping",
+        stat_uptime: "Uptime",
+        stat_servers: "Connected Servers",
+        stat_members: "Total Members",
+        stat_humans: "Humans",
+        stat_bots: "Bots",
+        stat_channels: "Channels",
+        server_details: "Server Breakdown",
+        system_health: "System Metrics",
+        setting_token: "Bot Token",
+        setting_server_id: "Server ID (Guild ID)",
+        setting_channel_id: "Welcome Channel ID",
+        setting_embed_color: "Embed Color",
+        setting_auto_role: "Auto Role ID",
+        setting_welcome_text: "Welcome Message",
+        btn_save: "Save Settings"
+      }
+    };
+
+    let currentLang = 'km';
+    function changeLanguage(lang) {
+      currentLang = lang;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (i18n[lang] && i18n[lang][key]) {
+          el.innerText = i18n[lang][key];
+        }
+      });
+    }
+
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('show');
+    }
+
+    function switchTab(tabId, navEl) {
+      document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-link-custom').forEach(el => el.classList.remove('active'));
+      
+      document.getElementById(tabId).classList.add('active');
+      navEl.classList.add('active');
+
+      if (tabId === 'tab-members') loadMembers();
+      if (tabId === 'tab-logs') loadActivityLogs();
+      if (tabId === 'tab-store') loadBackgroundStore();
+      if (tabId === 'tab-analytics') initAnalyticsCharts();
+      if (window.innerWidth <= 992) toggleSidebar();
+    }
+
+    // --- API BASE URL FOR DEPLOYMENT (VERCEL & RENDER) ---
+    const API_BASE = (function() {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return '';
+      const saved = localStorage.getItem('render_backend_url');
+      if (saved) return saved.replace(/\/$/, '');
+      return '';
+    })();
+
+    // --- DASHBOARD POLLING ---
+    function fetchDashboardStats() {
+      fetch(API_BASE + '/api/stats')
+
+        .then(r => r.json())
+        .then(data => {
+          const pill = document.getElementById('bot-status-pill');
+          const txt = document.getElementById('bot-status-text');
+          
+          if (data.status === 'ONLINE') {
+            pill.className = "status-badge online";
+            txt.innerText = "ONLINE";
+          } else {
+            pill.className = "status-badge offline";
+            txt.innerText = "OFFLINE";
+          }
+
+          document.getElementById('dash-ping').innerText = (data.ping || 0) + ' ms';
+          document.getElementById('dash-uptime').innerText = data.uptime || '--';
+          document.getElementById('dash-servers').innerText = data.server_count || 0;
+          document.getElementById('dash-members').innerText = data.total_members || 0;
+
+          document.getElementById('dash-humans').innerText = data.humans_count || 0;
+          document.getElementById('dash-bots').innerText = data.bots_count || 0;
+          document.getElementById('dash-channels').innerText = data.channels_count || 0;
+
+          // Metrics
+          document.getElementById('cpu-text').innerText = (data.cpu_usage || 0) + '%';
+          document.getElementById('cpu-bar').style.width = (data.cpu_usage || 0) + '%';
+
+          document.getElementById('ram-text').innerText = (data.ram_usage || 0) + '%';
+          document.getElementById('ram-bar').style.width = (data.ram_usage || 0) + '%';
+
+          const mongoBadge = document.getElementById('mongo-status');
+          if (data.mongo_connected) {
+            mongoBadge.className = "badge bg-success";
+            mongoBadge.innerText = "Connected";
+          } else {
+            mongoBadge.className = "badge bg-warning text-dark";
+            mongoBadge.innerText = "Disconnected / Local";
+          }
+        });
+    }
+
+    function fetchServerInfo() {
+      fetch('/api/server_info')
+        .then(r => r.json())
+        .then(data => {
+          const badge = document.getElementById('active-server-badge');
+          if (data.name) {
+            badge.classList.remove('d-none');
+            badge.classList.add('d-flex');
+            document.getElementById('header-server-icon').src = data.icon;
+            document.getElementById('header-server-name').innerText = data.name;
+          } else {
+            badge.classList.add('d-none');
+          }
+        });
+    }
+
+    setInterval(fetchDashboardStats, 5000);
+    setInterval(fetchServerInfo, 10000);
+    fetchDashboardStats();
+    fetchServerInfo();
+
+    // --- BOT SETTINGS ---
+    function loadBotSettings() {
+      fetch('/api/config')
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('set_bot_token').value = data.bot_token || "";
+          document.getElementById('set_server_id').value = data.server_id || "";
+          document.getElementById('set_welcome_channel_id').value = data.welcome_channel_id || "";
+          document.getElementById('set_embed_color').value = data.embed_color || "#3498db";
+          document.getElementById('set_embed_color_picker').value = data.embed_color || "#3498db";
+          document.getElementById('set_auto_role_id').value = data.auto_role_id || "";
+          document.getElementById('set_welcome_text').value = data.welcome_text || "";
+
+          // Design tab controls
+          document.getElementById('card_font_size').value = data.card_font_size || 32;
+          document.getElementById('val-font-size').innerText = data.card_font_size || 32;
+          document.getElementById('card_avatar_size').value = data.card_avatar_size || 180;
+          document.getElementById('val-avatar-size').innerText = data.card_avatar_size || 180;
+          document.getElementById('card_avatar_pos_x').value = data.card_avatar_pos_x || 360;
+          document.getElementById('val-avatar-x').innerText = data.card_avatar_pos_x || 360;
+          document.getElementById('card_avatar_pos_y').value = data.card_avatar_pos_y || 70;
+          document.getElementById('val-avatar-y').innerText = data.card_avatar_pos_y || 70;
+
+          document.getElementById('card_font_color').value = data.card_font_color || "#ffffff";
+          document.getElementById('card_avatar_border_color').value = data.card_avatar_border_color || "#00e5ff";
+          document.getElementById('card_avatar_border_width').value = data.card_avatar_border_width || 4;
+          document.getElementById('val-border-width').innerText = data.card_avatar_border_width || 4;
+          document.getElementById('card_avatar_glow_color').value = data.card_avatar_glow_color || "#ff3b9a";
+          document.getElementById('card_avatar_glow_size').value = data.card_avatar_glow_size || 14;
+          document.getElementById('val-glow-size').innerText = data.card_avatar_glow_size || 14;
+          document.getElementById('card_text_pos_x').value = data.card_text_pos_x || 450;
+          document.getElementById('val-pos-x').innerText = data.card_text_pos_x || 450;
+          document.getElementById('card_text_pos_y').value = data.card_text_pos_y || 320;
+          document.getElementById('val-pos-y').innerText = data.card_text_pos_y || 320;
+
+          document.getElementById('toggle-use-random').checked = data.use_random !== false;
+          document.getElementById('toggle-no-repeat').checked = data.no_repeat_mode !== false;
+
+          updateCardPreview();
+        });
+    }
+
+    loadBotSettings();
+
+    document.getElementById('set_embed_color_picker').addEventListener('input', function() {
+      document.getElementById('set_embed_color').value = this.value;
+    });
+
+    function saveBotSettings() {
+      const payload = {
+        bot_token: document.getElementById('set_bot_token').value.trim(),
+        server_id: document.getElementById('set_server_id').value.trim(),
+        welcome_channel_id: document.getElementById('set_welcome_channel_id').value.trim(),
+        embed_color: document.getElementById('set_embed_color').value.trim(),
+        auto_role_id: document.getElementById('set_auto_role_id').value.trim(),
+        welcome_text: document.getElementById('set_welcome_text').value
+      };
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json())
+      .then(res => {
+        alert(res.message || 'Saved!');
+        fetchServerInfo();
+      });
+    }
+
+    // --- WELCOME CARD DESIGN & PREVIEW (100% REAL-TIME + AUTO-SAVE) ---
+    let previewDebounceTimer = null;
+    let autoSaveDebounceTimer = null;
+
+    function updateCardPreview() {
+      const fontSize = document.getElementById('card_font_size').value;
+      const avatarSize = document.getElementById('card_avatar_size').value;
+      const avatarX = document.getElementById('card_avatar_pos_x').value;
+      const avatarY = document.getElementById('card_avatar_pos_y').value;
+      const fontColorRaw = document.getElementById('card_font_color').value;
+      const borderColorRaw = document.getElementById('card_avatar_border_color').value;
+      const borderWidth = document.getElementById('card_avatar_border_width').value;
+      const glowColorRaw = document.getElementById('card_avatar_glow_color').value;
+      const glowSize = document.getElementById('card_avatar_glow_size').value;
+      const posX = document.getElementById('card_text_pos_x').value;
+      const posY = document.getElementById('card_text_pos_y').value;
+
+      if (document.getElementById('val-font-size')) document.getElementById('val-font-size').innerText = fontSize;
+      if (document.getElementById('val-avatar-size')) document.getElementById('val-avatar-size').innerText = avatarSize;
+      if (document.getElementById('val-avatar-x')) document.getElementById('val-avatar-x').innerText = avatarX;
+      if (document.getElementById('val-avatar-y')) document.getElementById('val-avatar-y').innerText = avatarY;
+      if (document.getElementById('val-border-width')) document.getElementById('val-border-width').innerText = borderWidth;
+      if (document.getElementById('val-glow-size')) document.getElementById('val-glow-size').innerText = glowSize;
+      if (document.getElementById('val-pos-x')) document.getElementById('val-pos-x').innerText = posX;
+      if (document.getElementById('val-pos-y')) document.getElementById('val-pos-y').innerText = posY;
+
+      // 1. Instant Live Image Preview Update (Debounced 100ms)
+      clearTimeout(previewDebounceTimer);
+      previewDebounceTimer = setTimeout(() => {
+        const fontColor = encodeURIComponent(fontColorRaw);
+        const borderColor = encodeURIComponent(borderColorRaw);
+        const glowColor = encodeURIComponent(glowColorRaw);
+
+        const url = `/api/preview?card_font_size=${fontSize}&card_avatar_size=${avatarSize}&card_avatar_pos_x=${avatarX}&card_avatar_pos_y=${avatarY}&card_font_color=${fontColor}&card_avatar_border_color=${borderColor}&card_avatar_border_width=${borderWidth}&card_avatar_glow_color=${glowColor}&card_avatar_glow_size=${glowSize}&card_text_pos_x=${posX}&card_text_pos_y=${posY}&t=${new Date().getTime()}`;
+        const previewImg = document.getElementById('live-card-preview');
+        if (previewImg) previewImg.src = url;
+      }, 100);
+
+      // 2. Background Auto-Save to Server & MongoDB Atlas (Debounced 300ms)
+      clearTimeout(autoSaveDebounceTimer);
+      autoSaveDebounceTimer = setTimeout(() => {
+        const payload = {
+          card_font_size: parseInt(fontSize),
+          card_avatar_size: parseInt(avatarSize),
+          card_avatar_pos_x: parseInt(avatarX),
+          card_avatar_pos_y: parseInt(avatarY),
+          card_font_color: fontColorRaw,
+          card_avatar_border_color: borderColorRaw,
+          card_avatar_border_width: parseInt(borderWidth),
+          card_avatar_glow_color: glowColorRaw,
+          card_avatar_glow_size: parseInt(glowSize),
+          card_text_pos_x: parseInt(posX),
+          card_text_pos_y: parseInt(posY)
+        };
+        fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }, 300);
+    }
+
+
+
+    // --- BACKGROUND GALLERY ---
+    function loadBackgroundStore() {
+      fetch('/api/backgrounds')
+        .then(r => r.json())
+        .then(data => {
+          const grid = document.getElementById('bg-gallery-grid');
+          grid.innerHTML = '';
+          
+          document.getElementById('toggle-use-random').checked = data.use_random;
+          document.getElementById('toggle-no-repeat').checked = data.no_repeat_mode;
+
+          if (!data.backgrounds || data.backgrounds.length === 0) {
+            grid.innerHTML = '<div class="col-12 text-center py-5 text-dim"><i class="fa-regular fa-image fs-1 mb-2"></i><br>No backgrounds uploaded yet.</div>';
+            return;
+          }
+
+          data.backgrounds.forEach(bg => {
+            const isSelected = bg.id === data.selected_id;
+            const isDefault = bg.is_default;
+
+            const card = document.createElement('div');
+            card.className = 'bg-card';
+            card.innerHTML = `
+              ${isSelected ? '<span class="bg-badge bg-info text-dark">SELECTED</span>' : ''}
+              ${isDefault ? '<span class="bg-badge bg-warning text-dark">DEFAULT</span>' : ''}
+              <img src="${bg.url}" alt="${bg.name}">
+              <div class="bg-card-body">
+                <div class="bg-card-title mb-2" title="${bg.name}">${bg.name}</div>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-xs btn-outline-info flex-fill" onclick="setDefaultBg('${bg.id}')" title="Set Default"><i class="fa-solid fa-check"></i> Default</button>
+                  <button class="btn btn-xs btn-outline-danger" onclick="deleteBg('${bg.id}')" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+              </div>
+            `;
+            grid.appendChild(card);
+          });
+        });
+    }
+
+    function uploadBackgrounds(input) {
+      if (!input.files || input.files.length === 0) return;
+      const formData = new FormData();
+      for (let i = 0; i < input.files.length; i++) {
+        formData.append('files', input.files[i]);
+      }
+      fetch('/api/upload', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(res => {
+          alert(res.message || 'Uploaded!');
+          input.value = '';
+          loadBackgroundStore();
+        });
+    }
+
+    function deleteBg(bgId) {
+      if (!confirm("Are you sure you want to delete this background?")) return;
+      fetch(`/api/background/${bgId}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(res => {
+          loadBackgroundStore();
+        });
+    }
+
+    function setDefaultBg(bgId) {
+      fetch('/api/background/set_default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bgId })
+      })
+      .then(r => r.json())
+      .then(() => loadBackgroundStore());
+    }
+
+    function toggleRandomMode(enabled) {
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ use_random: enabled })
+      });
+    }
+
+    function toggleNoRepeatMode(enabled) {
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ no_repeat_mode: enabled })
+      });
+    }
+
+    // --- MEMBERS MANAGEMENT ---
+    function loadMembers() {
+      const q = document.getElementById('search-member-input').value;
+      const tbody = document.getElementById('members-table-body');
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-dim"><i class="fa-solid fa-spinner fa-spin me-2"></i> Loading members...</td></tr>';
+      
+      fetch(`/api/members?search=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => {
+          tbody.innerHTML = '';
+          if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-dim">No members found.</td></tr>';
+            return;
+          }
+          data.forEach(m => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><img src="${m.avatar}" width="36" height="36" class="rounded-circle border border-info"></td>
+              <td class="fw-bold">${m.name} ${m.bot ? '<span class="badge bg-info ms-1">BOT</span>' : ''}</td>
+              <td class="mono text-dim fs-7">${m.id}</td>
+              <td class="text-dim fs-7">${m.joined_at}</td>
+              <td>
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-outline-warning" onclick="openMemberModal('${m.id}', 'timeout', '${m.name}')"><i class="fa-solid fa-clock"></i></button>
+                  <button class="btn btn-outline-danger" onclick="openMemberModal('${m.id}', 'kick', '${m.name}')"><i class="fa-solid fa-user-minus"></i></button>
+                  <button class="btn btn-danger" onclick="openMemberModal('${m.id}', 'ban', '${m.name}')"><i class="fa-solid fa-ban"></i></button>
+                  <button class="btn btn-outline-info" onclick="openMemberModal('${m.id}', 'send_dm', '${m.name}')"><i class="fa-solid fa-envelope"></i></button>
+                </div>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        });
+    }
+
+    function openMemberModal(userId, action, username) {
+      document.getElementById('action-user-id').value = userId;
+      document.getElementById('action-type').value = action;
+      document.getElementById('action-modal-title').innerText = `${action.toUpperCase()} - ${username}`;
+
+      const durationGroup = document.getElementById('action-duration-group');
+      if (action === 'timeout') {
+        durationGroup.classList.remove('d-none');
+      } else {
+        durationGroup.classList.add('d-none');
+      }
+
+      const modal = new bootstrap.Modal(document.getElementById('memberActionModal'));
+      modal.show();
+    }
+
+    function executeMemberAction() {
+      const userId = document.getElementById('action-user-id').value;
+      const action = document.getElementById('action-type').value;
+      const reason = document.getElementById('action-reason-input').value;
+      const duration = document.getElementById('action-duration-select').value;
+
+      const payload = {
+        action: action,
+        user_id: userId,
+        reason: reason,
+        duration_minutes: duration,
+        message: reason
+      };
+
+      fetch('/api/member/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(r => r.json())
+      .then(res => {
+        alert(res.message || res.error || 'Action performed!');
+        const modalEl = document.getElementById('memberActionModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+        loadMembers();
+      });
+    }
+
+    // --- ACTIVITY LOGS ---
+    function loadActivityLogs() {
+      fetch('/api/logs')
+        .then(r => r.json())
+        .then(logs => {
+          const container = document.getElementById('logs-container');
+          container.innerHTML = '';
+          if (logs.length === 0) {
+            container.innerHTML = '<div class="text-center text-dim py-4">No activity logs recorded.</div>';
+            return;
+          }
+
+          logs.forEach(log => {
+            const div = document.createElement('div');
+            div.className = "p-3 bg-dark rounded-3 border border-secondary d-flex align-items-center justify-content-between";
+            div.innerHTML = `
+              <div>
+                <span class="badge bg-info me-2">${log.type.toUpperCase()}</span>
+                <strong class="text-light">${log.title}</strong>
+                <div class="text-dim fs-7 mt-1">${log.details || ''}</div>
+              </div>
+              <small class="text-dim mono">${log.timestamp}</small>
+            `;
+            container.appendChild(div);
+          });
+        });
+    }
+
+    // --- ANALYTICS CHARTS ---
+    let growthChart = null;
+    let welcomeChart = null;
+
+    function initAnalyticsCharts() {
+      fetch('/api/analytics')
+        .then(r => r.json())
+        .then(data => {
+          const ctxGrowth = document.getElementById('chart-growth').getContext('2d');
+          if (growthChart) growthChart.destroy();
+          growthChart = new Chart(ctxGrowth, {
+            type: 'line',
+            data: {
+              labels: data.growth_labels,
+              datasets: [{
+                label: 'New Members',
+                data: data.growth_data,
+                borderColor: '#00e5ff',
+                backgroundColor: 'rgba(0, 229, 255, 0.1)',
+                fill: true,
+                tension: 0.4
+              }]
+            },
+            options: { plugins: { legend: { labels: { color: '#fff' } } } }
+          });
+
+          const ctxWelcome = document.getElementById('chart-welcome').getContext('2d');
+          if (welcomeChart) welcomeChart.destroy();
+          welcomeChart = new Chart(ctxWelcome, {
+            type: 'bar',
+            data: {
+              labels: data.growth_labels,
+              datasets: [{
+                label: 'Welcome Cards Sent',
+                data: data.welcome_data,
+                backgroundColor: '#ff3b9a'
+              }]
+            },
+            options: { plugins: { legend: { labels: { color: '#fff' } } } }
+          });
+        });
+    }
+
+    // --- RESTORE BACKUP ---
+    function restoreConfig(input) {
+      if (!input.files || input.files.length === 0) return;
+      const formData = new FormData();
+      formData.append('backup_file', input.files[0]);
+
+      fetch('/api/restore', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(res => {
+          alert(res.message || res.error);
+          location.reload();
+        });
+    }
+  </script>
+</body>
+</html>

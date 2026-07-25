@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "routes": [
+    { "src": "/api/(.*)", "dest": "https://bot-bro-backend.onrender.com/api/$1" },
+    { "src": "/uploads/(.*)", "dest": "https://bot-bro-backend.onrender.com/uploads/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
