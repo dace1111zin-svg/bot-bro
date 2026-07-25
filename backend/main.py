@@ -47,12 +47,6 @@ def connect_mongo():
         print("🔄 Connecting to MongoDB Atlas...")
         print(f"📡 Cluster: cluster0.kxpnzpk.mongodb.net")
         
-        # Create SSL context with certifi
-        try:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-        except:
-            ssl_context = ssl.create_default_context()
-        
         client = MongoClient(
             MONGO_URI,
             serverSelectionTimeoutMS=30000,
@@ -61,7 +55,6 @@ def connect_mongo():
             tls=True,
             tlsAllowInvalidCertificates=True,
             tlsAllowInvalidHostnames=True,
-            ssl_context=ssl_context,
             retryWrites=True,
             w='majority'
         )
@@ -434,8 +427,6 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     pos_x = safe_int(config.get("card_text_pos_x"), 450)
     pos_y = safe_int(config.get("card_text_pos_y"), 320)
     font_size = safe_int(config.get("card_font_size"), 32)
-
-    font_color_hex = config.get("card_font_color", "#FFFFFF")
 
     # Font handling
     font_main = ImageFont.load_default()
