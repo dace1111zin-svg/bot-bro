@@ -40,13 +40,49 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# ============ MONGODB CONNECTION ============
+# ============ MONGODB CONNECTION WITH TLS 1.2 ============
 def connect_mongo():
-    """Connect to MongoDB Atlas with working SSL configuration"""
+    """Connect to MongoDB Atlas with TLS 1.2 explicitly"""
     try:
         print("🔄 Connecting to MongoDB Atlas...")
         print(f"📡 Cluster: cluster0.kxpnzpk.mongodb.net")
         
+        # Create SSL context with TLS 1.2
+        try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            # Force TLS 1.2
+            ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+            ssl_context.maximum_version = ssl.TLSVersion.TLSv1_2
+            # Disable hostname checking for Render
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        except Exception as e:
+            print(f"   SSL context creation warning: {e}")
+            ssl_context = None
+        
+        # Try with SSL context
+        if ssl_context:
+            try:
+                client = MongoClient(
+                    MONGO_URI,
+                    serverSelectionTimeoutMS=30000,
+                    connectTimeoutMS=30000,
+                    socketTimeoutMS=30000,
+                    tls=True,
+                    tlsAllowInvalidCertificates=True,
+                    tlsAllowInvalidHostnames=True,
+                    ssl_context=ssl_context,
+                    retryWrites=True,
+                    w='majority'
+                )
+                client.admin.command("ping")
+                print("✅ MongoDB Atlas Connected! (with TLS 1.2)")
+                return client, True
+            except Exception as e:
+                print(f"   Connection with SSL context failed: {e}")
+        
+        # Fallback: without SSL context
+        print("   Trying without SSL context...")
         client = MongoClient(
             MONGO_URI,
             serverSelectionTimeoutMS=30000,
@@ -58,10 +94,8 @@ def connect_mongo():
             retryWrites=True,
             w='majority'
         )
-        
-        # Test connection
         client.admin.command("ping")
-        print("✅ MongoDB Atlas Connected!")
+        print("✅ MongoDB Atlas Connected! (fallback)")
         return client, True
         
     except Exception as e:
@@ -86,7 +120,7 @@ else:
     logs_col = None
     analytics_col = None
 
-# ============ PATHS AND FOLDERS ============
+# ============ REST OF YOUR CODE CONTINUES HERE ============
 current_dir = os.path.dirname(os.path.abspath(__file__))
 frontend_dir = os.path.join(current_dir, '..', 'frontend')
 UPLOAD_FOLDER = os.path.join(current_dir, 'uploads')
@@ -458,7 +492,7 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     buf.seek(0)
     return buf
 
-# ============ FLASK WEB DASHBOARD ============
+# ============ FLASK APP ============
 app = Flask(__name__, template_folder=frontend_dir)
 CORS(app, origins=[
     "https://bot-bro-flax.vercel.app",
