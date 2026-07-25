@@ -9,118 +9,71 @@ import logging
 from datetime import datetime, timedelta
 from threading import Thread
 import asyncio
-import ssl
-
-# Fix SSL for Python 3.14 on Render
-try:
-    import certifi
-    os.environ['SSL_CERT_FILE'] = certifi.where()
-    os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
-except ImportError:
-    pass
 
 from flask import Flask, render_template, jsonify, request, send_from_directory, send_file, Response
 from flask_cors import CORS
 import aiohttp
 import discord
 from PIL import Image, ImageOps, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-from pymongo import MongoClient
+from supabase import create_client, Client
 import psutil
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
 # ============ CONFIGURATION ============
-MONGO_URI = os.getenv(
-    "MONGO_URI",
-    "mongodb+srv://dace1111zin_db_user:Si18hD9ebhlcFzEY@cluster0.kxpnzpk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-)
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+# Read from environment variables (set in Render or .env file)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SECRET_KEY = os.getenv("SECRET_KEY", "bot_bro_secret_key_2026")
 PORT = int(os.getenv("PORT", 8080))
 
-# ============ MONGODB CONNECTION WITH TLS 1.2 ============
-def connect_mongo():
-    """Connect to MongoDB Atlas with TLS 1.2 explicitly"""
+# Validate required environment variables
+if not SUPABASE_URL:
+    print("⚠️ Warning: SUPABASE_URL not set! Using default...")
+    SUPABASE_URL = "https://enyxdubbficptttmwtyk.supabase.co"
+
+if not SUPABASE_KEY:
+    print("❌ Error: SUPABASE_KEY not set in environment variables!")
+    print("❌ Please set SUPABASE_KEY in Render environment variables or .env file")
+    SUPABASE_KEY = ""  # Will cause connection to fail
+
+if not DISCORD_TOKEN:
+    print("⚠️ Warning: DISCORD_TOKEN not set in environment variables!")
+    print("⚠️ Bot will not start without DISCORD_TOKEN")
+
+# ============ SUPABASE CONNECTION ============
+def init_supabase():
+    """Initialize Supabase client"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ Supabase credentials not configured!")
+        print("❌ Make sure SUPABASE_URL and SUPABASE_KEY are set in environment variables")
+        return None, False
+    
     try:
-        print("🔄 Connecting to MongoDB Atlas...")
-        print(f"📡 Cluster: cluster0.kxpnzpk.mongodb.net")
-        
-        # Create SSL context with TLS 1.2
-        try:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            # Force TLS 1.2
-            ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-            ssl_context.maximum_version = ssl.TLSVersion.TLSv1_2
-            # Disable hostname checking for Render
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-        except Exception as e:
-            print(f"   SSL context creation warning: {e}")
-            ssl_context = None
-        
-        # Try with SSL context
-        if ssl_context:
-            try:
-                client = MongoClient(
-                    MONGO_URI,
-                    serverSelectionTimeoutMS=30000,
-                    connectTimeoutMS=30000,
-                    socketTimeoutMS=30000,
-                    tls=True,
-                    tlsAllowInvalidCertificates=True,
-                    tlsAllowInvalidHostnames=True,
-                    ssl_context=ssl_context,
-                    retryWrites=True,
-                    w='majority'
-                )
-                client.admin.command("ping")
-                print("✅ MongoDB Atlas Connected! (with TLS 1.2)")
-                return client, True
-            except Exception as e:
-                print(f"   Connection with SSL context failed: {e}")
-        
-        # Fallback: without SSL context
-        print("   Trying without SSL context...")
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
-            socketTimeoutMS=30000,
-            tls=True,
-            tlsAllowInvalidCertificates=True,
-            tlsAllowInvalidHostnames=True,
-            retryWrites=True,
-            w='majority'
-        )
-        client.admin.command("ping")
-        print("✅ MongoDB Atlas Connected! (fallback)")
-        return client, True
-        
+        print("🔄 Connecting to Supabase...")
+        print(f"📡 URL: {SUPABASE_URL}")
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Test connection
+        supabase.table('bot_config').select('*').limit(1).execute()
+        print("✅ Supabase Connected!")
+        return supabase, True
     except Exception as e:
-        print(f"❌ MongoDB Error: {e}")
+        print(f"❌ Supabase Error: {e}")
         return None, False
 
-# Connect to MongoDB
-mongo_client, mongo_connected = connect_mongo()
+supabase, supabase_connected = init_supabase()
 
-if mongo_connected and mongo_client:
-    db = mongo_client["bot_bro_db"]
-    config_col = db["bot_config"]
-    logs_col = db["activity_logs"]
-    analytics_col = db["analytics"]
-    print("✅ Connected to MongoDB Atlas successfully!")
+if supabase_connected and supabase:
+    print("✅ Connected to Supabase successfully!")
 else:
-    mongo_connected = False
-    print("⚠️ MongoDB Connection warning: MongoDB connection failed")
+    supabase_connected = False
+    print("⚠️ Supabase Connection warning: Connection failed")
     print("⚠️ Continuing with local storage fallback...")
-    db = None
-    config_col = None
-    logs_col = None
-    analytics_col = None
 
-# ============ REST OF YOUR CODE CONTINUES HERE ============
+# ============ PATHS AND FOLDERS ============
 current_dir = os.path.dirname(os.path.abspath(__file__))
 frontend_dir = os.path.join(current_dir, '..', 'frontend')
 UPLOAD_FOLDER = os.path.join(current_dir, 'uploads')
@@ -128,7 +81,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 BOT_START_TIME = datetime.now()
 
-# In-memory config fallback if Mongo offline
+# In-memory config fallback if Supabase offline
 local_config_store = {}
 local_logs_store = []
 local_analytics_store = {"welcome_cards_sent": 0, "joins_today": 0, "leaves_today": 0}
@@ -137,10 +90,9 @@ local_analytics_store = {"welcome_cards_sent": 0, "joins_today": 0, "leaves_toda
 DEFAULT_BG_1 = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop"
 DEFAULT_BG_2 = "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=1200&auto=format&fit=crop"
 
-# ============ CONFIG HELPERS ============
+# ============ SUPABASE HELPERS ============
 def get_default_config():
     return {
-        "_id": "main_config",
         "bot_token": DISCORD_TOKEN,
         "server_id": "",
         "welcome_channel_id": "",
@@ -149,7 +101,7 @@ def get_default_config():
         "auto_role_id": "",
         "auto_nickname": "",
         "language": "km",
-        "background_images": [
+        "background_images": json.dumps([
             {
                 "id": "def_1",
                 "name": "Abstract Purple Wave",
@@ -164,7 +116,7 @@ def get_default_config():
                 "is_default": False,
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
-        ],
+        ]),
         "selected_welcome_image": "",
         "use_random": True,
         "no_repeat_mode": True,
@@ -186,6 +138,93 @@ def get_default_config():
         "show_discord_logo": True
     }
 
+def load_config():
+    global local_config_store
+    if supabase_connected and supabase:
+        try:
+            response = supabase.table('bot_config').select('*').eq('id', 1).execute()
+            if response.data and len(response.data) > 0:
+                config = response.data[0]
+                # Convert JSON strings back to objects
+                if 'background_images' in config and isinstance(config['background_images'], str):
+                    config['background_images'] = json.loads(config['background_images'])
+                # Remove id from config for API response
+                if 'id' in config:
+                    config.pop('id', None)
+                return config
+            else:
+                # Insert default config
+                defaults = get_default_config()
+                supabase.table('bot_config').insert(defaults).execute()
+                return defaults
+        except Exception as e:
+            print(f"Error loading config from Supabase: {e}")
+    
+    if not local_config_store:
+        local_config_store = get_default_config()
+    return local_config_store
+
+def save_config(data):
+    global local_config_store
+    # Convert dict/list to JSON string for Supabase
+    data_to_save = data.copy()
+    if 'background_images' in data_to_save and isinstance(data_to_save['background_images'], (list, dict)):
+        data_to_save['background_images'] = json.dumps(data_to_save['background_images'])
+    
+    if supabase_connected and supabase:
+        try:
+            # Upsert config
+            supabase.table('bot_config').upsert(data_to_save).eq('id', 1).execute()
+        except Exception as e:
+            print(f"Error saving config to Supabase: {e}")
+    local_config_store = data
+
+def log_activity(action_type, title, details="", username="System"):
+    log_entry = {
+        "id": str(uuid.uuid4())[:8],
+        "timestamp": datetime.now().strftime("%d %b %Y %H:%M:%S"),
+        "type": action_type,
+        "title": title,
+        "details": details,
+        "username": username
+    }
+    if supabase_connected and supabase:
+        try:
+            supabase.table('activity_logs').insert(log_entry).execute()
+        except Exception as e:
+            print(f"Error saving log: {e}")
+    else:
+        local_logs_store.insert(0, log_entry)
+        if len(local_logs_store) > 200:
+            local_logs_store.pop()
+
+def increment_analytic(key, count=1):
+    if supabase_connected and supabase:
+        try:
+            # Get current value
+            response = supabase.table('analytics').select(key).eq('id', 1).execute()
+            if response.data and len(response.data) > 0:
+                current = response.data[0].get(key, 0)
+                supabase.table('analytics').update({key: current + count}).eq('id', 1).execute()
+            else:
+                supabase.table('analytics').insert({key: count, 'id': 1}).execute()
+        except Exception as e:
+            print(f"Error incrementing analytics: {e}")
+    else:
+        local_analytics_store[key] = local_analytics_store.get(key, 0) + count
+
+def get_analytics():
+    if supabase_connected and supabase:
+        try:
+            response = supabase.table('analytics').select('*').eq('id', 1).execute()
+            if response.data and len(response.data) > 0:
+                data = response.data[0]
+                data.pop('id', None)
+                return data
+        except Exception as e:
+            print(f"Error fetching analytics: {e}")
+    return local_analytics_store
+
 def normalize_backgrounds(bg_list):
     normalized = []
     if not isinstance(bg_list, list):
@@ -204,79 +243,6 @@ def normalize_backgrounds(bg_list):
         elif isinstance(item, dict):
             normalized.append(item)
     return normalized
-
-def load_config():
-    global local_config_store
-    if mongo_connected and config_col is not None:
-        try:
-            config = config_col.find_one({"_id": "main_config"})
-            if config:
-                defaults = get_default_config()
-                for k, v in defaults.items():
-                    if k not in config:
-                        config[k] = v
-                config["background_images"] = normalize_backgrounds(config.get("background_images", []))
-                return config
-            else:
-                defaults = get_default_config()
-                config_col.insert_one(defaults)
-                return defaults
-        except Exception as e:
-            print(f"Error loading config from MongoDB: {e}")
-    
-    if not local_config_store:
-        local_config_store = get_default_config()
-    local_config_store["background_images"] = normalize_backgrounds(local_config_store.get("background_images", []))
-    return local_config_store
-
-def save_config(data):
-    global local_config_store
-    data["_id"] = "main_config"
-    if mongo_connected and config_col is not None:
-        try:
-            config_col.replace_one({"_id": "main_config"}, data, upsert=True)
-        except Exception as e:
-            print(f"Error saving config to MongoDB: {e}")
-    local_config_store = data
-
-def log_activity(action_type, title, details="", user="System"):
-    log_entry = {
-        "id": str(uuid.uuid4())[:8],
-        "timestamp": datetime.now().strftime("%d %b %Y %H:%M:%S"),
-        "type": action_type,
-        "title": title,
-        "details": details,
-        "user": user
-    }
-    if mongo_connected and logs_col is not None:
-        try:
-            logs_col.insert_one(log_entry)
-        except Exception as e:
-            print(f"Error saving log: {e}")
-    else:
-        local_logs_store.insert(0, log_entry)
-        if len(local_logs_store) > 200:
-            local_logs_store.pop()
-
-def increment_analytic(key, count=1):
-    if mongo_connected and analytics_col is not None:
-        try:
-            analytics_col.update_one({"_id": "stats"}, {"$inc": {key: count}}, upsert=True)
-        except Exception as e:
-            print(f"Error incrementing analytics: {e}")
-    else:
-        local_analytics_store[key] = local_analytics_store.get(key, 0) + count
-
-def get_analytics():
-    if mongo_connected and analytics_col is not None:
-        try:
-            data = analytics_col.find_one({"_id": "stats"})
-            if data:
-                data.pop("_id", None)
-                return data
-        except Exception as e:
-            print(f"Error fetching analytics: {e}")
-    return local_analytics_store
 
 # ============ DISCORD BOT SETUP ============
 intents = discord.Intents.default()
@@ -343,6 +309,9 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     config = config_override or load_config()
     
     bg_list = config.get("background_images", [])
+    if isinstance(bg_list, str):
+        bg_list = json.loads(bg_list)
+    
     selected_id = config.get("selected_welcome_image", "")
     use_random = config.get("use_random", True)
     no_repeat = config.get("no_repeat_mode", True)
@@ -492,7 +461,7 @@ async def generate_welcome_card(member_name, avatar_url, server_name, member_cou
     buf.seek(0)
     return buf
 
-# ============ FLASK APP ============
+# ============ FLASK WEB DASHBOARD ============
 app = Flask(__name__, template_folder=frontend_dir)
 CORS(app, origins=[
     "https://bot-bro-flax.vercel.app",
@@ -561,7 +530,7 @@ def api_stats():
         "roles_count": roles_count,
         "cpu_usage": cpu_usage,
         "ram_usage": ram_usage,
-        "mongo_connected": mongo_connected
+        "supabase_connected": supabase_connected
     })
 
 @app.route('/api/server_info')
@@ -599,15 +568,19 @@ def api_config():
         return jsonify({"message": "Settings updated successfully!", "config": existing})
     
     config = load_config()
-    config.pop("_id", None)
+    if 'id' in config:
+        config.pop('id', None)
     return jsonify(config)
 
 # --- BACKGROUND GALLERY API ---
 @app.route('/api/backgrounds', methods=['GET'])
 def api_backgrounds():
     config = load_config()
+    bg_list = config.get("background_images", [])
+    if isinstance(bg_list, str):
+        bg_list = json.loads(bg_list)
     return jsonify({
-        "backgrounds": config.get("background_images", []),
+        "backgrounds": bg_list,
         "selected_id": config.get("selected_welcome_image", ""),
         "use_random": config.get("use_random", True),
         "no_repeat_mode": config.get("no_repeat_mode", True)
@@ -622,6 +595,8 @@ def api_upload():
     uploaded_items = []
     config = load_config()
     bg_list = config.get("background_images", [])
+    if isinstance(bg_list, str):
+        bg_list = json.loads(bg_list)
 
     allowed_exts = ('.png', '.jpg', '.jpeg', '.webp')
     for file in files:
@@ -657,6 +632,8 @@ def api_upload():
 def api_delete_background(bg_id):
     config = load_config()
     bg_list = config.get("background_images", [])
+    if isinstance(bg_list, str):
+        bg_list = json.loads(bg_list)
     
     target = next((bg for bg in bg_list if bg.get("id") == bg_id), None)
     if not target:
@@ -692,6 +669,8 @@ def api_rename_background():
     
     config = load_config()
     bg_list = config.get("background_images", [])
+    if isinstance(bg_list, str):
+        bg_list = json.loads(bg_list)
     for bg in bg_list:
         if bg.get("id") == bg_id:
             bg["name"] = new_name
@@ -706,6 +685,8 @@ def api_set_default_background():
     bg_id = data.get("id")
     config = load_config()
     bg_list = config.get("background_images", [])
+    if isinstance(bg_list, str):
+        bg_list = json.loads(bg_list)
     for bg in bg_list:
         bg["is_default"] = (bg.get("id") == bg_id)
     config["background_images"] = bg_list
@@ -865,10 +846,11 @@ def api_member_action():
 @app.route('/api/logs')
 def api_logs():
     limit = int(request.args.get("limit", 50))
-    if mongo_connected and logs_col is not None:
+    if supabase_connected and supabase:
         try:
-            logs = list(logs_col.find({}, {"_id": 0}).sort("_id", -1).limit(limit))
-            return jsonify(logs)
+            response = supabase.table('activity_logs').select('*').order('id', desc=True).limit(limit).execute()
+            if response.data:
+                return jsonify(response.data)
         except Exception as e:
             print(f"Error loading logs from DB: {e}")
     return jsonify(local_logs_store[:limit])
@@ -890,7 +872,8 @@ def api_analytics():
 @app.route('/api/backup')
 def api_backup():
     config = load_config()
-    config.pop("_id", None)
+    if 'id' in config:
+        config.pop('id', None)
     stats = get_analytics()
     backup_data = {
         "export_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
